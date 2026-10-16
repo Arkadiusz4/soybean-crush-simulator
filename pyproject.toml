@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "soybean-crush-simulator"
+version = "0.1.0"
+description = "An agent-based soybean market simulator: package and tooling foundation."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.10,<3",
+    "pyyaml>=6.0.2,<7",
+    "typer>=0.15,<1",
+]
+
+[project.optional-dependencies]
+dashboard = ["streamlit>=1.41,<2"]
+
+[project.scripts]
+soybean-sim = "soybean_sim.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<10",
+    "pytest-cov>=6,<8",
+    "ruff>=0.11,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/soybean_sim"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--import-mode=importlib --strict-config --strict-markers --cov=soybean_sim --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+branch = true
+source = ["soybean_sim"]
+
+[tool.coverage.report]
+show_missing = true

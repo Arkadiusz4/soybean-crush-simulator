@@ -1,0 +1,9 @@
+# Step duration and economic scenario behavior have not been defined yet.
+duration_steps: 120
+random_seed: 42
+regions:
+  - united_states
+  - brazil
+  - argentina
+  - european_union
+scenario_name: baseline
