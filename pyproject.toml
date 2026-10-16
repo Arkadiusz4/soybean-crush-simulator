@@ -39,7 +39,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib --strict-config --strict-markers --cov=soybean_sim --cov-report=term-missing --cov-fail-under=90"
+addopts = "--import-mode=importlib --strict-config --strict-markers --cov --cov-report=term-missing --cov-fail-under=90"
 
 [tool.coverage.run]
 branch = true
