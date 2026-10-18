@@ -49,6 +49,14 @@ units, currencies, price quotation bases, and reporting periods. Preserve origin
 units and dates in the provenance record. Historical EU membership and the chosen
 initialization month also need explicit treatment.
 
+The implemented `MarketBalance` model preserves marketing-year labels and accepts
+explicit `None` for missing quantities; it does not perform annual-to-monthly
+allocation. Ingestion must convert quantities to metric tons before constructing
+models, including any source quantities reported in thousands of tons. Monthly
+prices use `CommodityPrice` with USD per metric ton, a first-of-month date, and a
+source label. Known initial stocks use `Inventory`. See the
+[model contracts](architecture.md#market-input-models).
+
 ## Planned processing and validation
 
 1. Start with downloaded exports. Record source URLs, retrieval dates, release

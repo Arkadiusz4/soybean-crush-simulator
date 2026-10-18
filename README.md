@@ -24,7 +24,8 @@ initialization from USDA PSD and World Bank data; and an optional Streamlit dash
 ## Current status
 
 Implemented: an installable package, region and commodity enums, immutable
-Pydantic configuration models, YAML validation, a Typer CLI, tests, and CI.
+Pydantic configuration and market input models, YAML validation, a Typer CLI,
+tests, and CI.
 
 Agents, the simulation engine, economic rules, historical data ingestion, scenario
 effects, results, and dashboard functionality are **not implemented**. Monthly

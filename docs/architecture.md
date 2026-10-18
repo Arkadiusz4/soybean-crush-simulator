@@ -9,7 +9,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | Component | Responsibility |
 | --- | --- |
 | `__init__.py` | Read the installed package version |
-| `models.py` | Shared `Region` and `Commodity` enums |
+| `models/` | Shared enums and validated balances, prices, inventories, and simulation inputs |
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
 | `agents/` | Producer, crusher, and trader decisions |
@@ -24,6 +24,27 @@ configuration, and file errors; integration tests exercise the CLI.
 Configuration loading uses `yaml.safe_load` and Pydantic. `ConfigurationError`
 reports file and field context; the CLI converts it to stderr output and a nonzero
 exit code. Domain and configuration code do not depend on CLI or dashboard code.
+
+## Market input models
+
+The following Pydantic models are implemented in `soybean_sim.models` for use by
+future ingestion code, the simulation engine, and agents. `models/enums.py` defines
+the enums, `models/market.py` contains market records and shared validation types,
+and `models/simulation.py` defines `SimulationInput`.
+
+Models reject extra fields and are immutable; collection fields in `SimulationInput` use tuples.
+
+| Model | Fields and purpose |
+| --- | --- |
+| `MarketBalance` | Region, commodity, original `marketing_year` label, production, imports, exports, domestic consumption, beginning/ending stocks, and optional crush volume |
+| `CommodityPrice` | Commodity, `month`, positive `price_usd_per_tonne`, and nonempty `data_source` label |
+| `Inventory` | Region, commodity, and known nonnegative `quantity_tonnes` at initialization |
+| `SimulationInput` | Nonempty `balances`, `prices`, and `inventories` collections describing an initial state |
+
+All quantity fields end in `_tonnes` and use metric tons, never thousands of tons.
+
+`marketing_year` preserves the source's nonempty string label, without inferring
+dates or a calendar-year boundary. JSON uses `YYYY-MM-01`.
 
 ## Planned simulation workflow
 
@@ -62,7 +83,8 @@ read terminal arguments.
 
 ## Python API
 
-The existing API supports configuration loading and shared identifiers:
+The existing API supports configuration loading, shared identifiers, and the market
+input models described above:
 
 ```python
 from soybean_sim.config import ConfigurationError, SimulationConfig, load_config
