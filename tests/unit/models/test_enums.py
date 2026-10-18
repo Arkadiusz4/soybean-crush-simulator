@@ -1,5 +1,3 @@
-"""Public domain identifiers are usable in configuration and serialization."""
-
 import json
 
 import pytest
