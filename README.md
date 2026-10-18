@@ -39,8 +39,14 @@ Ruff, pytest, pytest-cov, and GitHub Actions. Streamlit is an optional dependenc
 
 ## Installation
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then clone
-the repository and run these commands from its root:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/). On macOS
+with Homebrew, install both uv and the Just development command runner with:
+
+```bash
+brew install uv just
+```
+
+Then clone the repository and run these commands from its root:
 
 ```bash
 git clone <repository-url>
@@ -84,21 +90,35 @@ No command runs a simulation.
 
 ## Development
 
+Use [Just](https://just.systems/man/en/packages.html) for common development tasks.
+Install it with `brew install just` on macOS, or your Linux package manager
+(for example, `sudo apt install just` on Ubuntu 24.04+). Recipes call uv, so both
+tools must be available on your PATH.
+
+Run `just` to list the available recipes:
+
 ```bash
-uv sync --locked
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-uv build
+just install        # Install locked dependencies, including all groups
+just lint           # Run Ruff lint checks
+just format         # Apply Ruff formatting
+just format-check   # Check formatting without changing files
+just test           # Run pytest with the configured coverage settings
+just coverage       # Run pytest with explicit coverage options, matching CI
+just check          # Run lint, format-check, and coverage
+just cli            # Display CLI help
+just clean          # Remove caches and test reports; preserve .venv and datasets
 ```
 
-Use `uv run ruff format .` to apply formatting. Tests include branch coverage
-reporting with a 90% minimum. CI has independent `lint` and `tests` jobs on Python
-3.12, triggered by PRs targeting `main`, pushes to `main`, or manual execution.
-Both jobs use `uv sync --locked --all-groups`.
+Recipes run from the directory containing the `justfile`, including when invoked
+from a project subdirectory. Use `just check` before opening a pull request.
 
-When intentionally updating dependencies, run `uv lock --upgrade`, review
-`uv.lock`, and rerun the checks.
+Tests include branch coverage reporting with a 90% minimum. CI runs the same
+checks as `just check` in independent `lint` and `tests` jobs on Python 3.12,
+triggered by PRs targeting `main`, pushes to `main`, or manual execution.
+
+For less frequent packaging and dependency tasks, use `uv build` to build the
+package, or `uv lock --upgrade` to update dependencies. Review lockfile changes
+and rerun `just install` and `just check` after updating dependencies.
 
 ## Further documentation
 
