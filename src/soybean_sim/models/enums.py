@@ -1,5 +1,3 @@
-"""Shared identifiers for the supported regions and commodities."""
-
 from enum import StrEnum
 
 
