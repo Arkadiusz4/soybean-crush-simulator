@@ -1,0 +1,31 @@
+Commodity_Code,Commodity_Description,Country_Code,Country_Name,Market_Year,Calendar_Year,Month,Attribute_ID,Attribute_Description,Unit_ID,Unit_Description,Value
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),125.5000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,057,Imports,08,(1000 MT),0.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,088,Exports,08,(1000 MT),20.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,125,Domestic Consumption,08,(1000 MT),90.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,020,Beginning Stocks,08,(1000 MT),5.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,176,Ending Stocks,08,(1000 MT),20.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,007,Crush,08,(1000 MT),75.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2023,2026,05,028,Production,08,(1000 MT),120.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2023,2026,05,176,Ending Stocks,08,(1000 MT),
+2222000,"Oilseed, Soybean",US,United States,2024,2026,05,028,Production,08,(1000 MT),200
+0813100,"Meal, Soybean",US,United States,2024,2026,05,028,Production,08,(1000 MT),150
+4232000,"Oil, Soybean",US,United States,2024,2026,05,028,Production,08,(1000 MT),35
+0813100,"Meal, Soybean",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),90
+4232000,"Oil, Soybean",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),20
+2222000,"Oilseed, Soybean",AR,Argentina,2024,2026,05,028,Production,08,(1000 MT),90
+0813100,"Meal, Soybean",AR,Argentina,2024,2026,05,028,Production,08,(1000 MT),60
+4232000,"Oil, Soybean",AR,Argentina,2024,2026,05,028,Production,08,(1000 MT),14
+2222000,"Oilseed, Soybean",E4,European Union,2024,2026,05,028,Production,08,(1000 MT),10
+0813100,"Meal, Soybean",E4,European Union,2024,2026,05,028,Production,08,(1000 MT),11
+4232000,"Oil, Soybean",E4,European Union,2024,2026,05,028,Production,08,(1000 MT),3
+0813100,"Meal, Soybean",BR,Brazil,2024,2026,05,007,Crush,08,(1000 MT),75.0000
+4232000,"Oil, Soybean",BR,Brazil,2024,2026,05,007,Crush,08,(1000 MT),75.0000
+2222000,"Oilseed, Soybean",BR,Brazil,2024,2026,05,004,Area Harvested,04,(1000 HA),ignored area
+2222000,"Oilseed, Soybean",BR,Brazil,2023,2026,05,149,Food Use Dom. Cons.,08,(1000 MT),99.0000
+2222000,"Oilseed, Soybean",E2,EU-15,2024,2026,05,028,Production,08,(1000 MT),excluded EU-15
+2222000,"Oilseed, Soybean",FR,France,2024,2026,05,028,Production,08,(1000 MT),excluded member state
+2222001,"Oilseed, Soybean (Local)",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),excluded commodity
+0813101,"Meal, Soybean (Local)",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),excluded commodity
+4232001,"Oil, Soybean (Local)",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),excluded commodity
+2221000,"Oilseed, Peanut",BR,Brazil,2024,2026,05,028,Production,08,(1000 MT),excluded commodity
