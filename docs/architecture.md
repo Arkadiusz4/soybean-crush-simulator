@@ -15,7 +15,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `agents/` | Producer, crusher, and trader decisions |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
-| `data/` inside the package | Historical data loading and preprocessing |
+| `data/` inside the package | Local USDA PSD CSV loading; further preprocessing is planned |
 
 Root `configs/` contains a baseline YAML example. Root `data/` is for local datasets
 and derived files, ignored by Git except for its README. Unit tests cover enums,
@@ -24,6 +24,12 @@ configuration, and file errors; integration tests exercise the CLI.
 Configuration loading uses `yaml.safe_load` and Pydantic. `ConfigurationError`
 reports file and field context; the CLI converts it to stderr output and a nonzero
 exit code. Domain and configuration code do not depend on CLI or dashboard code.
+
+The USDA CSV loader lives in `data/usda/`: `mappings.py` holds verified identifiers
+and required columns, `parsing.py` validates observation metadata and quantities,
+and `loader.py` reads, filters, and groups CSV rows into `MarketBalance` records.
+The package's `__init__.py` preserves the public `load_usda_psd_csv` and
+`USDADataError` imports from `soybean_sim.data.usda`.
 
 ## Market input models
 
