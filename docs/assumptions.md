@@ -1,7 +1,7 @@
 # Modeling assumptions
 
-These assumptions define the intended first model. Configuration validation is
-implemented; economic behavior and the monthly engine are not.
+These assumptions define the intended first model. Configuration and market input
+validation are implemented; economic behavior and the monthly engine are not.
 
 ## Initial scope
 
@@ -35,7 +35,9 @@ The allocation rule and seasonality remain open; stock measurements require
 separate treatment. See [data sources](data-sources.md).
 
 Mass balance, nonnegative feasible inventories, and capacity limits are intended
-future invariants. No market engine enforces them yet.
+future invariants. Input models already reject negative or nonfinite quantities,
+but no market engine enforces state transitions yet. Raw historical balances are
+not required to satisfy an exact accounting equation.
 
 ## Existing configuration conventions
 
