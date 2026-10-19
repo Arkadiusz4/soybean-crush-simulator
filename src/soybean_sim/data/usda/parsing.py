@@ -63,7 +63,7 @@ def _resolve_year_bounds(
     if marketing_year is not None:
         if start_year is not None or end_year is not None:
             raise ValueError("marketing_year cannot be combined with year range bounds")
-        
+
         if not isinstance(marketing_year, str) or not _YEAR_LABEL_PATTERN.fullmatch(
             marketing_year
         ):
@@ -138,7 +138,7 @@ def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
         raise USDADataError(
             f"{source_context}: malformed Value {value_text!r}"
         ) from exc
-    
+
     if not source_value.is_finite() or source_value < 0:
         raise USDADataError(
             f"{source_context}: Value must be finite and nonnegative: {value_text!r}"

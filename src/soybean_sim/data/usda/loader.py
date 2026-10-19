@@ -69,7 +69,7 @@ def load_usda_psd_csv(
         else {Commodity(commodity) for commodity in commodities}
     )
     csv_path = Path(path)
-    
+
     try:
         with csv_path.open(encoding="utf-8-sig", newline="") as stream:
             reader = csv.DictReader(stream, strict=True)
@@ -81,7 +81,7 @@ def load_usda_psd_csv(
         raise USDADataError(f"Cannot read USDA PSD CSV '{csv_path}': {exc}") from exc
     except csv.Error as exc:
         raise USDADataError(f"{csv_path}: malformed CSV: {exc}") from exc
-    
+
     return _build_balances(grouped_observations)
 
 
@@ -137,7 +137,7 @@ def _read_observations(
         selection = _select_observation(
             row, source_context, year_bounds, selected_regions, selected_commodities
         )
-        
+
         if selection is None:
             continue
 
@@ -203,15 +203,15 @@ def _select_observation(
 
     if attribute_mapping is None:
         known_descriptions = {description for _, description in _ATTRIBUTES.values()}
-        
+
         if row["Attribute_Description"] in known_descriptions:
             raise USDADataError(
                 f"{source_context}: unsupported Attribute_ID for "
                 f"{row['Attribute_Description']!r}"
             )
-        
+
         return None
-    
+
     field_name, _ = attribute_mapping
     if field_name == "crush_tonnes" and commodity != Commodity.SOYBEANS:
         return None
@@ -271,13 +271,13 @@ def _build_balances(
         region, commodity, marketing_year = balance_key
         attribute_quantities = grouped_observations[balance_key]
         quantities_in_tonnes = {}
-        
+
         for field_name, _ in _ATTRIBUTES.values():
             quantity = attribute_quantities.get(field_name)
             quantities_in_tonnes[field_name] = (
                 None if quantity is None else quantity.tonnes
             )
-        
+
         balances.append(
             MarketBalance(
                 region=region,
