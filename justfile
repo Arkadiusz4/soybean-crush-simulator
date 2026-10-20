@@ -40,5 +40,5 @@ cli:
 # Remove project caches and test reports; preserve .venv, datasets, and Git files.
 clean:
     find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
-    rm -rf ./.pytest_cache ./.ruff_cache ./htmlcov ./__pycache__
+    rm -rf ./.artifacts ./.pytest_cache ./.ruff_cache ./htmlcov ./__pycache__
     rm -f ./.coverage ./.coverage.* ./coverage.xml

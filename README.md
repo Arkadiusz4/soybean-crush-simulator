@@ -114,6 +114,13 @@ just clean          # Remove caches and test reports; preserve .venv and dataset
 Recipes run from the directory containing the `justfile`, including when invoked
 from a project subdirectory. Use `just check` before opening a pull request.
 
+Tool output paths are configured in `pyproject.toml`. Ruff and pytest caches live
+in `.artifacts/ruff/` and `.artifacts/pytest/`; coverage data and optional HTML/XML
+reports live in `.artifacts/coverage/`. This directory is generated automatically,
+ignored by Git, and removed by `just clean`. Python's `__pycache__/` directories,
+the `.venv/` environment, and package builds in `dist/` keep their usual locations
+and are also ignored by Git.
+
 Tests include branch coverage reporting with a 90% minimum. CI runs the same
 checks as `just check` in independent `lint`, `typecheck`, and `tests` jobs on Python 3.12,
 triggered by PRs targeting `main`, pushes to `main`, or manual execution.
