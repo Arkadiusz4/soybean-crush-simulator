@@ -47,6 +47,9 @@ remain `None`; actual zero remains zero. Identical duplicate observations are us
 once, while conflicting duplicates raise an error rather than selecting a release
 or summing values. Missing-value strings such as `NA` are not inferred: they fail
 numeric validation. Invalid data, file, or CSV errors raise `USDADataError`.
+Its subclasses distinguish file access (`USDAFileError`), CSV structure
+(`USDAFormatError`), and invalid or conflicting observations (`USDAObservationError`).
+All four types are available from `soybean_sim.data.usda`.
 
 The loader preserves `Market_Year` as its four-digit string. `Calendar_Year` and
 `Month` are not monthly production periods and do not affect grouping. No monthly

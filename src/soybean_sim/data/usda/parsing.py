@@ -4,6 +4,8 @@ from datetime import MAXYEAR, MINYEAR
 from decimal import Decimal, DecimalException, InvalidOperation
 from typing import NamedTuple
 
+from soybean_sim.data.usda.errors import USDADataError as USDADataError
+from soybean_sim.data.usda.errors import USDAObservationError
 from soybean_sim.data.usda.mappings import (
     _ATTRIBUTES,
     _COMMODITIES,
@@ -14,10 +16,6 @@ from soybean_sim.data.usda.mappings import (
 )
 
 _YEAR_LABEL_PATTERN = re.compile(r"[0-9]{4}")
-
-
-class USDADataError(ValueError):
-    """The local USDA CSV could not be read or contains invalid observations."""
 
 
 class _ParsedQuantity(NamedTuple):
@@ -73,7 +71,7 @@ def _parse_marketing_year(value: str, source_context: str) -> str:
     """Validate and return the unchanged nonzero four-digit marketing-year label."""
 
     if not _YEAR_LABEL_PATTERN.fullmatch(value) or int(value) == 0:
-        raise USDADataError(f"{source_context}: invalid Market_Year {value!r}")
+        raise USDAObservationError(f"{source_context}: invalid Market_Year {value!r}")
 
     return value
 
@@ -93,22 +91,22 @@ def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
             raise InvalidOperation
         source_value = Decimal(value_text)
     except InvalidOperation as exc:
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: malformed Value {value_text!r}"
         ) from exc
 
     if not source_value.is_finite() or source_value < 0:
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: Value must be finite and nonnegative: {value_text!r}"
         )
     try:
         tonnes = float(source_value * _TONNES_PER_SOURCE_UNIT)
     except DecimalException as exc:
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: Value cannot be represented in metric tonnes"
         ) from exc
     if not math.isfinite(tonnes) or (source_value != 0 and tonnes == 0):
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: Value cannot be represented in metric tonnes"
         )
 
@@ -136,7 +134,7 @@ def _parse_observation(row: dict[str, str], source_context: str) -> _ParsedQuant
     for column_name, expected_description in expected_descriptions.items():
         actual_description = row[column_name]
         if actual_description != expected_description:
-            raise USDADataError(
+            raise USDAObservationError(
                 f"{source_context}: inconsistent {column_name}: "
                 f"expected {expected_description!r}, got {actual_description!r}"
             )
@@ -147,7 +145,7 @@ def _parse_observation(row: dict[str, str], source_context: str) -> _ParsedQuant
         source_unit_id != _QUANTITY_UNIT_ID
         or source_unit_description != _QUANTITY_UNIT_DESCRIPTION
     ):
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: unsupported or inconsistent unit "
             f"{source_unit_id!r} / {source_unit_description!r}; "
             f"expected {_QUANTITY_UNIT_ID!r} / {_QUANTITY_UNIT_DESCRIPTION!r}"

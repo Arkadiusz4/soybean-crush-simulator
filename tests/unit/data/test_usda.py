@@ -5,7 +5,13 @@ from typing import Any
 
 import pytest
 
-from soybean_sim.data.usda import USDADataError, load_usda_psd_csv
+from soybean_sim.data.usda import (
+    USDADataError,
+    USDAFileError,
+    USDAFormatError,
+    USDAObservationError,
+    load_usda_psd_csv,
+)
 from soybean_sim.models import Commodity, Region
 
 
@@ -16,6 +22,20 @@ def test_public_exports_refer_to_the_implementation() -> None:
 
     assert load_usda_psd_csv is implementation
     assert USDADataError is parsing_error
+
+
+@pytest.mark.parametrize(
+    "error_type", [USDAFileError, USDAFormatError, USDAObservationError]
+)
+def test_specific_errors_remain_compatible_with_base_error(
+    error_type: type[USDADataError],
+) -> None:
+    """Keep specific failure categories catchable through the original base error."""
+    from soybean_sim.data.usda import errors
+
+    assert getattr(errors, error_type.__name__) is error_type
+    assert issubclass(error_type, USDADataError)
+    assert issubclass(error_type, ValueError)
 
 
 @pytest.fixture
@@ -151,8 +171,9 @@ def test_invalid_filters_are_rejected(
     sample_csv: Path, filters: dict[str, Any]
 ) -> None:
     """Check rejection of conflicting years, invalid bounds, and unknown identifiers."""
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as caught:
         load_usda_psd_csv(sample_csv, **filters)
+    assert not isinstance(caught.value, USDADataError)
 
 
 def test_output_order_is_stable_when_rows_are_reordered(
@@ -195,7 +216,7 @@ def test_conflicting_duplicates_report_key_and_line(
 ) -> None:
     """Check that duplicate conflicts report the file, row, and annual attribute."""
     path = write_csv([rows[0], {**rows[0], "Value": value}])
-    with pytest.raises(USDADataError) as caught:
+    with pytest.raises(USDAObservationError) as caught:
         load_usda_psd_csv(path)
     message = str(caught.value)
     assert str(path) in message
@@ -224,7 +245,7 @@ def test_invalid_values_report_the_csv_line(
 ) -> None:
     """Check file and row context for invalid or unrepresentable quantities."""
     path = write_csv([{**rows[0], "Value": value}])
-    with pytest.raises(USDADataError) as caught:
+    with pytest.raises(USDAObservationError) as caught:
         load_usda_psd_csv(path)
     assert "Value" in str(caught.value)
     assert "row 2" in str(caught.value)
@@ -257,7 +278,7 @@ def test_units_must_match_both_code_and_description(
     path = write_csv(
         [{**rows[0], "Unit_ID": unit_id, "Unit_Description": unit_description}]
     )
-    with pytest.raises(USDADataError, match="unsupported or inconsistent unit"):
+    with pytest.raises(USDAObservationError, match="unsupported or inconsistent unit"):
         load_usda_psd_csv(path)
 
 
@@ -269,7 +290,7 @@ def test_identifier_description_mismatches_are_rejected(
 ) -> None:
     """Check that supported identifiers must match their verified USDA descriptions."""
     path = write_csv([{**rows[0], column: "unexpected description"}])
-    with pytest.raises(USDADataError, match=f"inconsistent {column}"):
+    with pytest.raises(USDAObservationError, match=f"inconsistent {column}"):
         load_usda_psd_csv(path)
 
 
@@ -277,7 +298,7 @@ def test_recognized_attribute_description_with_wrong_id_is_rejected(
     rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
     """Check that a known attribute name still requires its verified code."""
-    with pytest.raises(USDADataError, match="unsupported Attribute_ID"):
+    with pytest.raises(USDAObservationError, match="unsupported Attribute_ID"):
         load_usda_psd_csv(write_csv([{**rows[0], "Attribute_ID": "999"}]))
 
 
@@ -286,7 +307,7 @@ def test_invalid_source_marketing_year_is_rejected(
     rows: list[dict[str, str]], write_csv: Callable, year: str
 ) -> None:
     """Check rejection of source years that are not nonzero four-digit labels."""
-    with pytest.raises(USDADataError, match="invalid Market_Year"):
+    with pytest.raises(USDAObservationError, match="invalid Market_Year"):
         load_usda_psd_csv(write_csv([{**rows[0], "Market_Year": year}]))
 
 
@@ -392,7 +413,7 @@ def test_unreadable_files_have_path_context(tmp_path: Path, kind: str) -> None:
         path.mkdir()
     elif kind == "non_utf8":
         path.write_bytes(b"\xff")
-    with pytest.raises(USDADataError) as caught:
+    with pytest.raises(USDAFileError) as caught:
         load_usda_psd_csv(path)
     assert str(path) in str(caught.value)
     assert "Cannot read" in str(caught.value)
@@ -426,7 +447,7 @@ def test_missing_required_columns_are_rejected(
         )
         writer.writeheader()
         writer.writerow(rows[0])
-    with pytest.raises(USDADataError, match=f"missing required columns: {column}"):
+    with pytest.raises(USDAFormatError, match=f"missing required columns: {column}"):
         load_usda_psd_csv(path)
 
 
@@ -437,7 +458,7 @@ def test_duplicate_or_empty_column_names_are_rejected(
     """Check that duplicate and empty header names fail even when no data rows exist."""
     path = write_csv([])
     path.write_text(path.read_text().strip() + f",{extra_column}\n", encoding="utf-8")
-    with pytest.raises(USDADataError, match="duplicate or empty column names"):
+    with pytest.raises(USDAFormatError, match="duplicate or empty column names"):
         load_usda_psd_csv(path)
 
 
@@ -447,7 +468,7 @@ def test_malformed_csv_rows_are_rejected(write_csv: Callable, line: str) -> None
     path = write_csv([])
     with path.open("a", encoding="utf-8") as stream:
         stream.write(line)
-    with pytest.raises(USDADataError, match=r"row length|malformed CSV"):
+    with pytest.raises(USDAFormatError, match=r"row length|malformed CSV"):
         load_usda_psd_csv(path)
 
 
@@ -455,7 +476,7 @@ def test_empty_file_is_not_a_valid_export(tmp_path: Path) -> None:
     """Check that a file without a header is reported as missing required columns."""
     path = tmp_path / "empty.csv"
     path.write_text("", encoding="utf-8")
-    with pytest.raises(USDADataError, match="missing required columns"):
+    with pytest.raises(USDAFormatError, match="missing required columns"):
         load_usda_psd_csv(path)
 
 

@@ -2,6 +2,11 @@ import csv
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
+from soybean_sim.data.usda.errors import (
+    USDAFileError,
+    USDAFormatError,
+    USDAObservationError,
+)
 from soybean_sim.data.usda.mappings import (
     _ATTRIBUTES,
     _COMMODITIES,
@@ -9,7 +14,6 @@ from soybean_sim.data.usda.mappings import (
     _REQUIRED_COLUMNS,
 )
 from soybean_sim.data.usda.parsing import (
-    USDADataError,
     _parse_marketing_year,
     _parse_observation,
     _ParsedQuantity,
@@ -60,9 +64,9 @@ def load_usda_psd_csv(
                 reader, csv_path, year_bounds, selected_regions, selected_commodities
             )
     except (OSError, UnicodeError) as exc:
-        raise USDADataError(f"Cannot read USDA PSD CSV '{csv_path}': {exc}") from exc
+        raise USDAFileError(f"Cannot read USDA PSD CSV '{csv_path}': {exc}") from exc
     except csv.Error as exc:
-        raise USDADataError(f"{csv_path}: malformed CSV: {exc}") from exc
+        raise USDAFormatError(f"{csv_path}: malformed CSV: {exc}") from exc
 
     return _build_balances(grouped_observations)
 
@@ -75,13 +79,13 @@ def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
 
     missing_columns = _REQUIRED_COLUMNS - set(columns)
     if missing_columns:
-        raise USDADataError(
+        raise USDAFormatError(
             f"{csv_path}: missing required columns: "
             f"{', '.join(sorted(missing_columns))}"
         )
 
     if len(columns) != len(set(columns)) or any(not name for name in columns):
-        raise USDADataError(f"{csv_path}: duplicate or empty column names")
+        raise USDAFormatError(f"{csv_path}: duplicate or empty column names")
 
 
 def _read_observations(
@@ -121,7 +125,7 @@ def _read_observations(
 def _normalize_csv_row(row: dict[str, str], source_context: str) -> dict[str, str]:
     """Check row width and strip surrounding whitespace from each cell."""
     if None in row or any(value is None for value in row.values()):
-        raise USDADataError(f"{source_context}: row length does not match CSV header")
+        raise USDAFormatError(f"{source_context}: row length does not match CSV header")
     return {column_name: value.strip() for column_name, value in row.items()}
 
 
@@ -155,7 +159,7 @@ def _select_observation(
         known_descriptions = {description for _, description in _ATTRIBUTES.values()}
 
         if row["Attribute_Description"] in known_descriptions:
-            raise USDADataError(
+            raise USDAObservationError(
                 f"{source_context}: unsupported Attribute_ID for "
                 f"{row['Attribute_Description']!r}"
             )
@@ -194,7 +198,7 @@ def _record_observation(
         and previous_quantity.source_value != quantity.source_value
     ):
         region, commodity, marketing_year = balance_key
-        raise USDADataError(
+        raise USDAObservationError(
             f"{source_context}: conflicting duplicate for {region.value}, "
             f"{commodity.value}, {marketing_year}, {field_name}"
         )
