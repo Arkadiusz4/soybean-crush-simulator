@@ -32,10 +32,10 @@ required approvals, or any repository settings.
 ## Quality checks
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-uv run soybean-sim --help
+just lint
+just format-check
+just test
+just cli
 uv run soybean-sim version
 uv run soybean-sim validate-config configs/baseline.yaml
 uv run python -c "import soybean_sim"
@@ -43,13 +43,13 @@ uv run python -c "import soybean_sim"
 
 Tests are split into focused unit tests and CLI integration tests. `pytest`
 includes coverage reporting and a 90% minimum. To apply formatting, run
-`uv run ruff format .`. For reviewed automatic lint fixes, use
+`just format`. For reviewed automatic lint fixes, use
 `uv run ruff check --fix .` and inspect the diff.
 
 GitHub Actions runs independent `lint` and `tests` jobs on pull requests targeting
 `main`, pushes to `main`, and manual dispatch. Both use Python 3.12 and
-`uv sync --locked --all-groups`. Local commands are available for checking changes
-before opening a pull request.
+`just install`, which installs all locked dependency groups through uv. CI runs
+`just lint`, `just format-check`, and `just coverage`, matching `just check` locally.
 
 After dependency changes, regenerate `uv.lock` with `uv lock`, verify with
 `uv sync --locked`, and include both the dependency declaration and lockfile in
