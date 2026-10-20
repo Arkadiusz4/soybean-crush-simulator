@@ -1,1 +1,1 @@
-"""Reserved for dataset loading and preprocessing; not implemented yet."""
+"""Historical dataset loading and preprocessing, independent of simulation state."""
