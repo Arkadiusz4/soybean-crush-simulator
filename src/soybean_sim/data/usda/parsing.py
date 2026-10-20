@@ -7,6 +7,7 @@ source decimals are retained alongside model-ready tonnes for duplicate checks.
 
 import math
 import re
+from datetime import MAXYEAR, MINYEAR
 from decimal import Decimal, DecimalException, InvalidOperation
 from typing import NamedTuple
 
@@ -19,8 +20,6 @@ from soybean_sim.data.usda.mappings import (
     _TONNES_PER_SOURCE_UNIT,
 )
 
-_MIN_VALID_YEAR = 1
-_MAX_VALID_YEAR = 9999
 _YEAR_LABEL_PATTERN = re.compile(r"[0-9]{4}")
 
 
@@ -78,19 +77,15 @@ def _resolve_year_bounds(
     for bound_name, bound_value in (("start_year", start_year), ("end_year", end_year)):
         if bound_value is None:
             continue
-        valid_bound = (
-            type(bound_value) is int
-            and _MIN_VALID_YEAR <= bound_value <= _MAX_VALID_YEAR
-        )
+        valid_bound = type(bound_value) is int and MINYEAR <= bound_value <= MAXYEAR
 
         if not valid_bound:
             raise ValueError(
-                f"{bound_name} must be an integer between "
-                f"{_MIN_VALID_YEAR} and {_MAX_VALID_YEAR}"
+                f"{bound_name} must be an integer between {MINYEAR} and {MAXYEAR}"
             )
 
-    lower_bound = _MIN_VALID_YEAR if start_year is None else start_year
-    upper_bound = _MAX_VALID_YEAR if end_year is None else end_year
+    lower_bound = MINYEAR if start_year is None else start_year
+    upper_bound = MAXYEAR if end_year is None else end_year
 
     if lower_bound > upper_bound:
         raise ValueError("start_year must not exceed end_year")
