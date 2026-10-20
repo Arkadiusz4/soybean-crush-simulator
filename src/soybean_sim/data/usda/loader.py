@@ -6,7 +6,7 @@ metric tonnes. File and CSV errors are reported with their source path.
 """
 
 import csv
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from soybean_sim.data.usda.mappings import (
@@ -85,7 +85,7 @@ def load_usda_psd_csv(
     return _build_balances(grouped_observations)
 
 
-def _validate_columns(columns: list[str], csv_path: Path) -> None:
+def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
     """Check required columns before consuming rows; allow unrelated extra columns.
 
     Raises:
