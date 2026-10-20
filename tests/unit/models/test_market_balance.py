@@ -13,6 +13,7 @@ from soybean_sim.models import (
 def test_balance_preserves_reporting_period_and_reported_quantities(
     records: dict[type[BaseModel], dict[str, Any]],
 ) -> None:
+    """Check that reported years and quantities need no exact reconciliation."""
     balance = MarketBalance.model_validate(records[MarketBalance])
     assert balance.region is Region.BRAZIL
     assert balance.commodity is Commodity.SOYBEANS
@@ -39,6 +40,7 @@ def test_balance_preserves_reporting_period_and_reported_quantities(
 def test_zero_and_missing_observations_remain_distinct(
     records: dict[type[BaseModel], dict[str, Any]], field: str, value: int | None
 ) -> None:
+    """Check that zero and unknown quantities stay distinct through JSON storage."""
     records[MarketBalance][field] = value
     balance = MarketBalance.model_validate(records[MarketBalance])
     assert balance.model_dump()[field] == value
@@ -62,6 +64,7 @@ def test_zero_and_missing_observations_remain_distinct(
 def test_balance_rejects_invalid_quantities(
     records: dict[type[BaseModel], dict[str, Any]], field: str, value: Any
 ) -> None:
+    """Check every balance quantity for negative, nonfinite, and coerced values."""
     records[MarketBalance][field] = value
     with pytest.raises(ValidationError, match=field):
         MarketBalance.model_validate(records[MarketBalance])
@@ -71,6 +74,7 @@ def test_balance_rejects_invalid_quantities(
 def test_crush_is_only_a_soybean_input(
     records: dict[type[BaseModel], dict[str, Any]], commodity: Commodity
 ) -> None:
+    """Check that meal and oil reject recorded crush quantities, including zero."""
     records[MarketBalance]["commodity"] = commodity
     assert MarketBalance.model_validate(records[MarketBalance]).crush_tonnes is None
     records[MarketBalance]["crush_tonnes"] = 0
@@ -81,6 +85,7 @@ def test_crush_is_only_a_soybean_input(
 def test_balance_preserves_source_marketing_year_label(
     records: dict[type[BaseModel], dict[str, Any]],
 ) -> None:
+    """Check that source year labels are retained without calendar conversion."""
     records[MarketBalance]["marketing_year"] = "MY 2020/2021"
     balance = MarketBalance.model_validate(records[MarketBalance])
     assert balance.marketing_year == "MY 2020/2021"

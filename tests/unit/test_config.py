@@ -1,5 +1,3 @@
-"""Configuration bounds, type safety, and useful file validation failures."""
-
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +12,7 @@ from soybean_sim.models import Region
 def test_valid_config_converts_regions_and_trims_name(
     config_data: dict[str, Any],
 ) -> None:
+    """Check that valid settings resolve region enums and trim the scenario label."""
     config_data["scenario_name"] = " baseline "
     config = SimulationConfig.model_validate(config_data)
 
@@ -26,6 +25,7 @@ def test_valid_config_converts_regions_and_trims_name(
 def test_config_accepts_smallest_duration_and_zero_seed(
     config_data: dict[str, Any],
 ) -> None:
+    """Check the valid lower boundaries for run duration and random seed."""
     config_data.update(duration_steps=1, random_seed=0)
     config = SimulationConfig.model_validate(config_data)
     assert config.duration_steps == 1
@@ -58,6 +58,7 @@ def test_config_accepts_smallest_duration_and_zero_seed(
 def test_invalid_fields_are_rejected(
     config_data: dict[str, Any], field: str, value: Any
 ) -> None:
+    """Check that invalid settings and unknown fields report the affected field."""
     config_data[field] = value
     with pytest.raises(ValidationError) as caught:
         SimulationConfig.model_validate(config_data)
@@ -68,18 +69,21 @@ def test_invalid_fields_are_rejected(
     "field", ["duration_steps", "random_seed", "regions", "scenario_name"]
 )
 def test_all_settings_are_explicit(config_data: dict[str, Any], field: str) -> None:
+    """Check that every run setting is required rather than silently defaulted."""
     del config_data[field]
     with pytest.raises(ValidationError, match=field):
         SimulationConfig.model_validate(config_data)
 
 
 def test_configuration_cannot_be_reassigned(config_data: dict[str, Any]) -> None:
+    """Check that validated settings cannot be modified by attribute assignment."""
     config = SimulationConfig.model_validate(config_data)
     with pytest.raises(ValidationError, match="frozen"):
         config.random_seed = 7
 
 
 def test_sample_config(baseline_path: Path) -> None:
+    """Check that the baseline YAML loads the documented duration, seed, and regions."""
     config = load_config(baseline_path)
     assert config.duration_steps == 120
     assert config.random_seed == 42
@@ -89,6 +93,7 @@ def test_sample_config(baseline_path: Path) -> None:
 
 @pytest.mark.parametrize("contents", ["", "null", "[]", "- brazil", "42", "baseline"])
 def test_yaml_root_must_be_mapping(tmp_path: Path, contents: str) -> None:
+    """Check that empty, scalar, and sequence YAML roots are rejected as settings."""
     path = tmp_path / "invalid.yaml"
     path.write_text(contents, encoding="utf-8")
     with pytest.raises(ConfigurationError, match="expected a YAML mapping"):
@@ -96,6 +101,7 @@ def test_yaml_root_must_be_mapping(tmp_path: Path, contents: str) -> None:
 
 
 def test_malformed_yaml_has_file_and_parse_context(tmp_path: Path) -> None:
+    """Check that YAML syntax errors include the file path and parser location."""
     path = tmp_path / "broken.yaml"
     path.write_text("regions: [brazil", encoding="utf-8")
     with pytest.raises(ConfigurationError) as caught:
@@ -106,6 +112,7 @@ def test_malformed_yaml_has_file_and_parse_context(tmp_path: Path) -> None:
 
 
 def test_unsafe_yaml_tags_are_rejected(tmp_path: Path) -> None:
+    """Check that YAML tags requesting Python object construction are rejected."""
     path = tmp_path / "unsafe.yaml"
     path.write_text("!!python/tuple [1, 2]", encoding="utf-8")
     with pytest.raises(ConfigurationError, match="Invalid YAML"):
@@ -114,6 +121,7 @@ def test_unsafe_yaml_tags_are_rejected(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("kind", ["missing", "directory", "non_utf8"])
 def test_unreadable_files_are_explained(tmp_path: Path, kind: str) -> None:
+    """Check that inaccessible or undecodable configuration files report their path."""
     path = tmp_path / "config.yaml"
     if kind == "directory":
         path.mkdir()
@@ -128,6 +136,7 @@ def test_unreadable_files_are_explained(tmp_path: Path, kind: str) -> None:
 def test_validation_reports_all_fields_with_locations(
     tmp_path: Path, config_data: dict[str, Any]
 ) -> None:
+    """Check that multiple setting errors include nested field paths in one message."""
     config_data.update(duration_steps=0, regions=["unknown"])
     path = tmp_path / "invalid.yaml"
     path.write_text(yaml.safe_dump(config_data), encoding="utf-8")

@@ -1,10 +1,3 @@
-"""Validate USDA year labels, observation metadata, and physical quantities.
-
-This module performs no file I/O or record aggregation. Selected rows are checked
-against verified descriptions and units before their values are converted. Exact
-source decimals are retained alongside model-ready tonnes for duplicate checks.
-"""
-
 import math
 import re
 from datetime import MAXYEAR, MINYEAR
@@ -28,14 +21,7 @@ class USDADataError(ValueError):
 
 
 class _ParsedQuantity(NamedTuple):
-    """Keep duplicate-comparison precision separate from the model's float value.
-
-    Attributes:
-        source_value: Original Decimal in thousands of metric tonnes, or None
-            when the source cell is blank. Used for exact duplicate comparisons.
-        tonnes: Validated float in metric tonnes, or None for a blank cell.
-            Conversion happens once, before constructing a MarketBalance.
-    """
+    """Pair an exact source decimal in 1000 MT with float tonnes; blanks become None."""
 
     source_value: Decimal | None
     tonnes: float | None
@@ -44,19 +30,9 @@ class _ParsedQuantity(NamedTuple):
 def _resolve_year_bounds(
     marketing_year: str | None, start_year: int | None, end_year: int | None
 ) -> tuple[int, int]:
-    """Resolve the caller's year selection into validated inclusive bounds.
+    """Resolve one four-digit marketing-year label or inclusive integer year bounds.
 
-    Args:
-        marketing_year: A four-digit year label, mutually exclusive with bounds.
-        start_year: Optional inclusive lower bound; defaults to 1.
-        end_year: Optional inclusive upper bound; defaults to 9999.
-
-    Returns:
-        Inclusive integer bounds used for filtering source marketing years.
-
-    Raises:
-        ValueError: Selectors conflict, a label is malformed, a bound is not an
-            integer from 1 through 9999, or the lower bound exceeds the upper.
+    Use either a single year or ordered range bounds, defaulting to 1 and 9999.
     """
 
     if marketing_year is not None and (
@@ -94,15 +70,7 @@ def _resolve_year_bounds(
 
 
 def _parse_marketing_year(value: str, source_context: str) -> str:
-    """Validate a source year label without turning it into a calendar period.
-
-    Returns:
-        The unchanged four-digit label, whose numeric value must be nonzero.
-
-    Raises:
-        USDADataError: The label is invalid. The message includes source_context,
-            which identifies the CSV path and row supplied by the loader.
-    """
+    """Validate and return the unchanged nonzero four-digit marketing-year label."""
 
     if not _YEAR_LABEL_PATTERN.fullmatch(value) or int(value) == 0:
         raise USDADataError(f"{source_context}: invalid Market_Year {value!r}")
@@ -111,19 +79,10 @@ def _parse_marketing_year(value: str, source_context: str) -> str:
 
 
 def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
-    """Parse a source quantity while preserving missing values and decimal precision.
+    """Convert a trimmed 1000 MT cell to exact source decimals and float tonnes.
 
-    Args:
-        value_text: Trimmed Value cell, in the verified thousands-of-tonnes unit.
-        source_context: CSV path and row number for validation errors.
-
-    Returns:
-        Original decimal and converted tonnes, or two None values for a blank
-        cell. Numbers must be finite and nonnegative. Conversion must neither
-        overflow nor turn a nonzero quantity into zero.
-
-    Raises:
-        USDADataError: The number is malformed or violates these numeric rules.
+    Blank cells return two None values. Quantities must be finite and nonnegative,
+    remaining representable after conversion without turning nonzero values to zero.
     """
 
     if not value_text:
@@ -157,21 +116,11 @@ def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
 
 
 def _parse_observation(row: dict[str, str], source_context: str) -> _ParsedQuantity:
-    """Validate a selected row's metadata, then parse its quantity.
+    """Validate a selected row's descriptions and unit, then convert its quantity.
 
-    The loader must first select supported codes, attributes, and years. Matching
-    code/description pairs guard against source schema changes. Only the verified
-    physical unit is converted; rate and area attributes are filtered elsewhere.
-
-    Args:
-        row: Whitespace-normalized CSV row with supported identifiers.
-        source_context: CSV path and row number for validation errors.
-
-    Returns:
-        The source decimal and model-ready metric tonnes, keeping blanks missing.
-
-    Raises:
-        USDADataError: A description, unit, or numeric value is inconsistent.
+    Expect trimmed cells with supported codes already selected by the loader.
+    Only unit 08 / (1000 MT) is accepted. Return source decimals and metric tonnes,
+    keeping blanks missing.
     """
 
     _, commodity_description = _COMMODITIES[row["Commodity_Code"]]

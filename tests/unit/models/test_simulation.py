@@ -17,6 +17,7 @@ from soybean_sim.models import (
 def test_simulation_input_keeps_balances_prices_and_inventory_separate(
     records: dict[type[BaseModel], dict[str, Any]],
 ) -> None:
+    """Check that annual balances, monthly prices, and stocks stay separate."""
     initial = SimulationInput.model_validate(records[SimulationInput])
     assert initial.balances[0].marketing_year == "2020/21"
     assert initial.balances[0].production_tonnes == 100
@@ -33,6 +34,7 @@ def test_simulation_input_keeps_balances_prices_and_inventory_separate(
 def test_initial_collections_cannot_be_empty(
     records: dict[type[BaseModel], dict[str, Any]], field: str
 ) -> None:
+    """Check that a snapshot requires at least one record in each input collection."""
     records[SimulationInput][field] = []
     with pytest.raises(ValidationError, match=field):
         SimulationInput.model_validate(records[SimulationInput])
@@ -42,6 +44,7 @@ def test_initial_collections_cannot_be_empty(
 def test_initial_records_must_be_unique(
     records: dict[type[BaseModel], dict[str, Any]], field: str
 ) -> None:
+    """Check that repeated records in each snapshot collection fail validation."""
     records[SimulationInput][field] *= 2
     with pytest.raises(ValidationError, match=f"{field} must be unique"):
         SimulationInput.model_validate(records[SimulationInput])
@@ -50,6 +53,7 @@ def test_initial_records_must_be_unique(
 def test_initial_prices_must_share_one_month(
     records: dict[type[BaseModel], dict[str, Any]],
 ) -> None:
+    """Check that different commodities cannot have different initial price months."""
     second_price = {
         **records[CommodityPrice],
         "commodity": "soybean_oil",
@@ -63,6 +67,7 @@ def test_initial_prices_must_share_one_month(
 def test_initial_input_accepts_multiple_regions_and_commodities(
     records: dict[type[BaseModel], dict[str, Any]],
 ) -> None:
+    """Check snapshots containing several regions and commodities."""
     second_balance = {
         **records[MarketBalance],
         "region": "united_states",

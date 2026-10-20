@@ -14,6 +14,11 @@ from soybean_sim.models import (
 
 @pytest.fixture
 def records() -> dict[type[BaseModel], dict[str, Any]]:
+    """Return fresh synthetic inputs for each market model and the initial snapshot.
+
+    Quantities are illustrative, not historical data. The annual balance is
+    intentionally not exact so tests do not imply an accounting constraint.
+    """
     balance = {
         "region": "brazil",
         "commodity": "soybeans",

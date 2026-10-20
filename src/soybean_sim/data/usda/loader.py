@@ -1,10 +1,3 @@
-"""Orchestrate local PSD CSV ingestion without changing annual reporting periods.
-
-Rows are normalized, selected, parsed, and grouped in that order. Duplicate
-observations are compared using original decimals; output models use converted
-metric tonnes. File and CSV errors are reported with their source path.
-"""
-
 import csv
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -37,26 +30,15 @@ def load_usda_psd_csv(
     regions: Iterable[Region] | None = None,
     commodities: Iterable[Commodity] | None = None,
 ) -> tuple[MarketBalance, ...]:
-    """Load annual market balances from a local UTF-8 USDA PSD Oilseeds CSV.
+    """Load a local UTF-8 PSD CSV, sorting balances by region, commodity, and year.
 
-    Args:
-        path: Local CSV path; a UTF-8 byte-order mark is accepted.
-        marketing_year: One four-digit year label, instead of range bounds.
-        start_year: Inclusive lower bound; omitted means no lower restriction.
-        end_year: Inclusive upper bound; omitted means no upper restriction.
-        regions: Selected model regions. None selects all; an empty iterable none.
-        commodities: Selected model commodities, with the same selection rules.
+    Select one four-digit marketing_year or inclusive start_year/end_year bounds.
+    Omitted bounds are unrestricted. Region and commodity filters default to all;
+    empty filters select none. A UTF-8 byte-order mark is accepted.
 
-    Returns:
-        Balances sorted by region identifier, commodity identifier, then year.
-        Blank or absent quantities remain None. Only unit 08 / (1000 MT) is
-        supported. Identical duplicates are retained once; no matches return an
-        empty tuple. Annual quantities are never allocated to months.
-
-    Raises:
-        ValueError: Year selectors or region/commodity filters are invalid.
-        USDADataError: Reading fails or selected data is invalid, including
-            conflicting duplicates. Messages retain file and applicable row context.
+    Convert only unit 08 / (1000 MT) to tonnes. Missing quantities remain None,
+    equivalent duplicates count once, and no matches return an empty tuple.
+    Annual quantities are never allocated to months.
     """
 
     year_bounds = _resolve_year_bounds(marketing_year, start_year, end_year)
@@ -86,11 +68,9 @@ def load_usda_psd_csv(
 
 
 def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
-    """Check required columns before consuming rows; allow unrelated extra columns.
+    """Check that required headers exist and all column names are nonempty and unique.
 
-    Raises:
-        USDADataError: Required names are missing, or any header name is empty
-            or duplicated. Missing-column errors take precedence over duplicates.
+    Check missing names first; allow unrelated extra columns without renaming them.
     """
 
     missing_columns = _REQUIRED_COLUMNS - set(columns)
@@ -111,22 +91,10 @@ def _read_observations(
     selected_regions: set[Region],
     selected_commodities: set[Commodity],
 ) -> _GroupedBalances:
-    """Run the row pipeline and collect selected observations into annual groups.
+    """Normalize, filter, parse, and group rows by region, commodity, and source year.
 
-    Args:
-        reader: CSV reader positioned after its validated header.
-        csv_path: Source path used with the reader's physical line number in errors.
-        year_bounds: Inclusive integer bounds for marketing-year selection.
-        selected_regions: Model regions to retain, after source-code mapping.
-        selected_commodities: Model commodities to retain, excluding local variants.
-
-    Returns:
-        Groups keyed by region, commodity, and unchanged marketing-year label.
-        Each attribute retains both its source decimal and converted tonnes.
-
-    Raises:
-        USDADataError: A row is malformed, a selected observation is invalid,
-            or repeated observations conflict.
+    The reader must have a validated header. Year bounds are inclusive. Retain exact
+    source decimals for duplicate comparisons alongside converted tonnes.
     """
 
     grouped_observations: _GroupedBalances = {}
@@ -151,17 +119,7 @@ def _read_observations(
 
 
 def _normalize_csv_row(row: dict[str, str], source_context: str) -> dict[str, str]:
-    """Reject rows with missing/extra cells, then strip surrounding whitespace.
-
-    CSV readers report broken row widths with a None key or value. Check this
-    before filtering so malformed CSV structure is never silently ignored.
-
-    Returns:
-        A row whose cell values have surrounding whitespace removed.
-
-    Raises:
-        USDADataError: The row length does not match the CSV header.
-    """
+    """Check row width and strip surrounding whitespace from each cell."""
     if None in row or any(value is None for value in row.values()):
         raise USDADataError(f"{source_context}: row length does not match CSV header")
     return {column_name: value.strip() for column_name, value in row.items()}
@@ -174,19 +132,11 @@ def _select_observation(
     selected_regions: set[Region],
     selected_commodities: set[Commodity],
 ) -> tuple[_BalanceKey, str] | None:
-    """Select supported annual attributes without parsing their numeric values.
+    """Return the annual balance key and field name, or None for an excluded row.
 
-    Code filters precede attribute checks, and attribute checks precede source-year
-    validation. Preserve this order: ignored meal/oil crush rows need no valid year,
-    while a recognized attribute with a wrong ID must fail even outside the range.
-
-    Returns:
-        The annual balance key and model field name, or None for an excluded row.
-        Descriptions, units, and quantities are validated only after selection.
-
-    Raises:
-        USDADataError: A recognized attribute description has an unsupported ID,
-            or a relevant row has an invalid marketing-year label.
+    Filter commodity/region codes, then attributes, then inclusive year bounds.
+    Ignore meal/oil crush before parsing years and verify recognized attribute IDs
+    before year filtering. Other metadata and values are parsed later.
     """
 
     commodity_mapping = _COMMODITIES.get(row["Commodity_Code"])
@@ -231,14 +181,10 @@ def _record_observation(
     quantity: _ParsedQuantity,
     source_context: str,
 ) -> None:
-    """Store one attribute, rejecting conflicting duplicates without summing values.
+    """Store an attribute in place, comparing source decimals rather than floats.
 
-    The groups are updated in place. Compare original decimals to avoid float
-    rounding concealing conflicts. Equivalent values are accepted; None versus
-    a known value is a conflict rather than an instruction to fill a missing cell.
-
-    Raises:
-        USDADataError: The same annual attribute already has a different value.
+    Equivalent duplicates count once. None stays distinct from a known quantity
+    when checking for conflicting observations.
     """
 
     attribute_quantities = grouped_observations.setdefault(balance_key, {})
@@ -258,12 +204,10 @@ def _record_observation(
 def _build_balances(
     grouped_observations: _GroupedBalances,
 ) -> tuple[MarketBalance, ...]:
-    """Construct annual models from converted quantities in deterministic order.
+    """Build annual balances sorted by region, commodity, and source year label.
 
-    Returns:
-        One MarketBalance per group, sorted by region, commodity, and year label.
-        Attributes absent from a group become None, while recorded zeroes remain
-        zero. No conversion, imputation, or accounting reconciliation occurs here.
+    Absent attributes become None; recorded zeroes remain zero. Quantities are
+    already in tonnes and are not imputed or reconciled here.
     """
 
     balances = []

@@ -1,5 +1,3 @@
-"""Shared configuration fixtures."""
-
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +6,7 @@ import pytest
 
 @pytest.fixture
 def config_data() -> dict[str, Any]:
+    """Return fresh valid run settings so tests can change fields independently."""
     return {
         "duration_steps": 12,
         "random_seed": 42,
@@ -18,4 +17,5 @@ def config_data() -> dict[str, Any]:
 
 @pytest.fixture
 def baseline_path() -> Path:
+    """Locate the checked-in baseline YAML independently of the working directory."""
     return Path(__file__).resolve().parents[1] / "configs" / "baseline.yaml"

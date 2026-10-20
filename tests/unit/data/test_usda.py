@@ -1,5 +1,3 @@
-"""Offline tests using synthetic quantities and verified USDA CSV identifiers."""
-
 import csv
 from collections.abc import Callable
 from pathlib import Path
@@ -12,6 +10,7 @@ from soybean_sim.models import Commodity, Region
 
 
 def test_public_exports_refer_to_the_implementation() -> None:
+    """Check that package imports expose the original loader and exception objects."""
     from soybean_sim.data.usda.loader import load_usda_psd_csv as implementation
     from soybean_sim.data.usda.parsing import USDADataError as parsing_error
 
@@ -21,11 +20,13 @@ def test_public_exports_refer_to_the_implementation() -> None:
 
 @pytest.fixture
 def sample_csv() -> Path:
+    """Locate the PSD fixture with synthetic values and verified source codes."""
     return Path(__file__).resolve().parents[2] / "fixtures/usda/psd_sample.csv"
 
 
 @pytest.fixture
 def rows(sample_csv: Path) -> list[dict[str, str]]:
+    """Read the PSD fixture as string cells, preserving leading zeros in identifiers."""
     with sample_csv.open(encoding="utf-8", newline="") as stream:
         return list(csv.DictReader(stream))
 
@@ -34,9 +35,15 @@ def rows(sample_csv: Path) -> list[dict[str, str]]:
 def write_csv(
     tmp_path: Path, rows: list[dict[str, str]]
 ) -> Callable[[list[dict[str, str]]], Path]:
+    """Provide a writer for temporary CSV exports using the fixture's column names.
+
+    Each call replaces input.csv in the test directory, allowing tests to isolate
+    invalid observations without modifying the checked-in fixture.
+    """
     columns = tuple(rows[0])
 
     def write(observations: list[dict[str, str]]) -> Path:
+        """Write the supplied observations and a header to a temporary UTF-8 CSV."""
         path = tmp_path / "input.csv"
         with path.open("w", encoding="utf-8", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=columns)
@@ -48,6 +55,7 @@ def write_csv(
 
 
 def test_maps_only_standard_commodities_and_supported_regions(sample_csv: Path) -> None:
+    """Check supported source mappings while excluding local variants and EU-15."""
     balances = load_usda_psd_csv(sample_csv)
     assert isinstance(balances, tuple)
     assert len(balances) == 13
@@ -66,6 +74,7 @@ def test_maps_only_standard_commodities_and_supported_regions(sample_csv: Path) 
 
 
 def test_groups_attributes_and_converts_thousands_of_tonnes(sample_csv: Path) -> None:
+    """Check annual attribute grouping and conversion to metric tonnes."""
     (balance,) = load_usda_psd_csv(
         str(sample_csv),
         marketing_year="2024",
@@ -83,6 +92,7 @@ def test_groups_attributes_and_converts_thousands_of_tonnes(sample_csv: Path) ->
 
 
 def test_absent_and_blank_values_do_not_become_zero(sample_csv: Path) -> None:
+    """Check that missing quantities stay unknown without consumption substitutes."""
     (balance,) = load_usda_psd_csv(sample_csv, marketing_year="2023")
     assert balance.production_tonnes == 120000
     assert balance.imports_tonnes is None  # Attribute absent.
@@ -92,6 +102,7 @@ def test_absent_and_blank_values_do_not_become_zero(sample_csv: Path) -> None:
 
 
 def test_meal_and_oil_crush_rows_are_not_loaded(sample_csv: Path) -> None:
+    """Check that crush quantities are excluded from meal and oil balances."""
     balances = load_usda_psd_csv(
         sample_csv, commodities=[Commodity.SOYBEAN_MEAL, Commodity.SOYBEAN_OIL]
     )
@@ -113,6 +124,7 @@ def test_meal_and_oil_crush_rows_are_not_loaded(sample_csv: Path) -> None:
 def test_year_and_empty_filters(
     sample_csv: Path, filters: dict[str, Any], expected_years: set[str], count: int
 ) -> None:
+    """Check inclusive year filtering and empty selections that return no balances."""
     balances = load_usda_psd_csv(sample_csv, **filters)
     assert len(balances) == count
     assert {balance.marketing_year for balance in balances} == expected_years
@@ -138,6 +150,7 @@ def test_year_and_empty_filters(
 def test_invalid_filters_are_rejected(
     sample_csv: Path, filters: dict[str, Any]
 ) -> None:
+    """Check rejection of conflicting years, invalid bounds, and unknown identifiers."""
     with pytest.raises(ValueError):
         load_usda_psd_csv(sample_csv, **filters)
 
@@ -145,6 +158,7 @@ def test_invalid_filters_are_rejected(
 def test_output_order_is_stable_when_rows_are_reordered(
     sample_csv: Path, rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
+    """Check that reversed CSV rows produce the same balances in sorted key order."""
     expected = load_usda_psd_csv(sample_csv)
     actual = load_usda_psd_csv(write_csv(list(reversed(rows))))
     assert actual == expected
@@ -159,6 +173,7 @@ def test_output_order_is_stable_when_rows_are_reordered(
 def test_identical_duplicates_do_not_sum(
     rows: list[dict[str, str]], write_csv: Callable, value: str
 ) -> None:
+    """Check that equivalent duplicates count once regardless of reporting date."""
     duplicate = {**rows[0], "Value": value, "Calendar_Year": "2025", "Month": "12"}
     (balance,) = load_usda_psd_csv(write_csv([rows[0], duplicate]))
     assert balance.production_tonnes == 125500
@@ -168,6 +183,7 @@ def test_identical_duplicates_do_not_sum(
 def test_duplicate_missing_values_are_accepted(
     rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
+    """Check that repeated blank observations remain one unknown quantity."""
     row = {**rows[0], "Value": ""}
     (balance,) = load_usda_psd_csv(write_csv([row, row]))
     assert balance.production_tonnes is None
@@ -177,6 +193,7 @@ def test_duplicate_missing_values_are_accepted(
 def test_conflicting_duplicates_report_key_and_line(
     rows: list[dict[str, str]], write_csv: Callable, value: str
 ) -> None:
+    """Check that duplicate conflicts report the file, row, and annual attribute."""
     path = write_csv([rows[0], {**rows[0], "Value": value}])
     with pytest.raises(USDADataError) as caught:
         load_usda_psd_csv(path)
@@ -205,6 +222,7 @@ def test_conflicting_duplicates_report_key_and_line(
 def test_invalid_values_report_the_csv_line(
     rows: list[dict[str, str]], write_csv: Callable, value: str
 ) -> None:
+    """Check file and row context for invalid or unrepresentable quantities."""
     path = write_csv([{**rows[0], "Value": value}])
     with pytest.raises(USDADataError) as caught:
         load_usda_psd_csv(path)
@@ -217,6 +235,7 @@ def test_invalid_values_report_the_csv_line(
 def test_unit_conversion_precedes_float_representation(
     rows: list[dict[str, str]], write_csv: Callable, value: str, tonnes: float
 ) -> None:
+    """Check that decimal scaling preserves tiny values before float conversion."""
     (balance,) = load_usda_psd_csv(write_csv([{**rows[0], "Value": value}]))
     assert balance.production_tonnes == tonnes
 
@@ -234,6 +253,7 @@ def test_unit_conversion_precedes_float_representation(
 def test_units_must_match_both_code_and_description(
     rows: list[dict[str, str]], write_csv: Callable, unit_id: str, unit_description: str
 ) -> None:
+    """Check that both the unit code and its description must match."""
     path = write_csv(
         [{**rows[0], "Unit_ID": unit_id, "Unit_Description": unit_description}]
     )
@@ -247,6 +267,7 @@ def test_units_must_match_both_code_and_description(
 def test_identifier_description_mismatches_are_rejected(
     rows: list[dict[str, str]], write_csv: Callable, column: str
 ) -> None:
+    """Check that supported identifiers must match their verified USDA descriptions."""
     path = write_csv([{**rows[0], column: "unexpected description"}])
     with pytest.raises(USDADataError, match=f"inconsistent {column}"):
         load_usda_psd_csv(path)
@@ -255,6 +276,7 @@ def test_identifier_description_mismatches_are_rejected(
 def test_recognized_attribute_description_with_wrong_id_is_rejected(
     rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
+    """Check that a known attribute name still requires its verified code."""
     with pytest.raises(USDADataError, match="unsupported Attribute_ID"):
         load_usda_psd_csv(write_csv([{**rows[0], "Attribute_ID": "999"}]))
 
@@ -263,6 +285,7 @@ def test_recognized_attribute_description_with_wrong_id_is_rejected(
 def test_invalid_source_marketing_year_is_rejected(
     rows: list[dict[str, str]], write_csv: Callable, year: str
 ) -> None:
+    """Check rejection of source years that are not nonzero four-digit labels."""
     with pytest.raises(USDADataError, match="invalid Market_Year"):
         load_usda_psd_csv(write_csv([{**rows[0], "Market_Year": year}]))
 
@@ -270,6 +293,7 @@ def test_invalid_source_marketing_year_is_rejected(
 def test_out_of_scope_rows_are_filtered_before_numeric_validation(
     rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
+    """Check that excluded records are skipped before numeric validation."""
     path = write_csv(
         [
             rows[0],
@@ -342,6 +366,7 @@ def test_filtering_and_validation_keep_their_existing_order(
     overrides: dict[str, str],
     expected_error: str | None,
 ) -> None:
+    """Check exclusion order and error priority for multiply invalid rows."""
     path = write_csv([{**rows[0], **overrides}])
     if expected_error is None:
         assert load_usda_psd_csv(path, marketing_year="2024") == ()
@@ -353,6 +378,7 @@ def test_filtering_and_validation_keep_their_existing_order(
 def test_whitespace_and_utf8_bom_are_supported(
     rows: list[dict[str, str]], write_csv: Callable
 ) -> None:
+    """Check that padded cells and a UTF-8 byte-order mark are accepted."""
     path = write_csv([{key: f" {value} " for key, value in rows[0].items()}])
     path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
     assert load_usda_psd_csv(path)[0].production_tonnes == 125500
@@ -360,6 +386,7 @@ def test_whitespace_and_utf8_bom_are_supported(
 
 @pytest.mark.parametrize("kind", ["missing", "directory", "non_utf8"])
 def test_unreadable_files_have_path_context(tmp_path: Path, kind: str) -> None:
+    """Check path context for missing, directory, and undecodable inputs."""
     path = tmp_path / "input.csv"
     if kind == "directory":
         path.mkdir()
@@ -389,6 +416,7 @@ def test_unreadable_files_have_path_context(tmp_path: Path, kind: str) -> None:
 def test_missing_required_columns_are_rejected(
     tmp_path: Path, rows: list[dict[str, str]], column: str
 ) -> None:
+    """Check that every required USDA column is named when absent from the header."""
     path = tmp_path / "missing-column.csv"
     with path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(
@@ -406,6 +434,7 @@ def test_missing_required_columns_are_rejected(
 def test_duplicate_or_empty_column_names_are_rejected(
     rows: list[dict[str, str]], write_csv: Callable, extra_column: str
 ) -> None:
+    """Check that duplicate and empty header names fail even when no data rows exist."""
     path = write_csv([])
     path.write_text(path.read_text().strip() + f",{extra_column}\n", encoding="utf-8")
     with pytest.raises(USDADataError, match="duplicate or empty column names"):
@@ -414,6 +443,7 @@ def test_duplicate_or_empty_column_names_are_rejected(
 
 @pytest.mark.parametrize("line", ["one,two\n", "," * 12 + "\n", '"unterminated\n'])
 def test_malformed_csv_rows_are_rejected(write_csv: Callable, line: str) -> None:
+    """Check rejection of wrong row widths and unterminated quoted CSV fields."""
     path = write_csv([])
     with path.open("a", encoding="utf-8") as stream:
         stream.write(line)
@@ -422,6 +452,7 @@ def test_malformed_csv_rows_are_rejected(write_csv: Callable, line: str) -> None
 
 
 def test_empty_file_is_not_a_valid_export(tmp_path: Path) -> None:
+    """Check that a file without a header is reported as missing required columns."""
     path = tmp_path / "empty.csv"
     path.write_text("", encoding="utf-8")
     with pytest.raises(USDADataError, match="missing required columns"):
@@ -429,4 +460,5 @@ def test_empty_file_is_not_a_valid_export(tmp_path: Path) -> None:
 
 
 def test_header_only_export_returns_no_balances(write_csv: Callable) -> None:
+    """Check that a valid header without observations produces an empty result."""
     assert load_usda_psd_csv(write_csv([])) == ()

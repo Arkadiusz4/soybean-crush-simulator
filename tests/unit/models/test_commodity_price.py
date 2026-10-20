@@ -15,6 +15,7 @@ from soybean_sim.models import (
 def test_invalid_prices_are_rejected(
     records: dict[type[BaseModel], dict[str, Any]], value: Any
 ) -> None:
+    """Check that prices reject nonpositive, nonfinite, missing, and coerced values."""
     records[CommodityPrice]["price_usd_per_tonne"] = value
     with pytest.raises(ValidationError, match="price_usd_per_tonne"):
         CommodityPrice.model_validate(records[CommodityPrice])
@@ -27,6 +28,7 @@ def test_invalid_prices_are_rejected(
 def test_month_is_an_explicit_first_day_date(
     records: dict[type[BaseModel], dict[str, Any]], value: Any
 ) -> None:
+    """Check that monthly Python inputs require an explicit first-of-month date."""
     records[CommodityPrice]["month"] = value
     with pytest.raises(ValidationError, match="month"):
         CommodityPrice.model_validate(records[CommodityPrice])
