@@ -22,6 +22,7 @@ soybean-sim = "soybean_sim.cli:app"
 
 [dependency-groups]
 dev = [
+    "pyright[nodejs]>=1.1.400,<2",
     "pytest>=8.3,<10",
     "pytest-cov>=6,<8",
     "ruff>=0.11,<1",
@@ -36,6 +37,13 @@ line-length = 88
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src"]
+typeCheckingMode = "standard"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
