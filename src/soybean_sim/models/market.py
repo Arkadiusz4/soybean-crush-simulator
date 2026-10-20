@@ -10,7 +10,7 @@ from pydantic import (
     model_validator,
 )
 
-from soybean_sim.models.enums import Commodity, Region
+from .enums import Commodity, Region
 
 NonNegativeTonnes = Annotated[float, Field(strict=True, ge=0, allow_inf_nan=False)]
 NonEmptyString = Annotated[

@@ -2,7 +2,7 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from soybean_sim.models.market import CommodityPrice, Inventory, MarketBalance
+from .market import CommodityPrice, Inventory, MarketBalance
 
 
 class SimulationInput(BaseModel):

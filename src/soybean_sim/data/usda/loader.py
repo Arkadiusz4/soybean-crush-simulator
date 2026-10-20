@@ -2,24 +2,25 @@ import csv
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-from soybean_sim.data.usda.errors import (
+from soybean_sim.models import Commodity, MarketBalance, Region
+
+from .errors import (
     USDAFileError,
     USDAFormatError,
     USDAObservationError,
 )
-from soybean_sim.data.usda.mappings import (
+from .mappings import (
     _ATTRIBUTES,
     _COMMODITIES,
     _REGIONS,
     _REQUIRED_COLUMNS,
 )
-from soybean_sim.data.usda.parsing import (
+from .parsing import (
     _parse_marketing_year,
     _parse_observation,
     _ParsedQuantity,
     _resolve_year_bounds,
 )
-from soybean_sim.models import Commodity, MarketBalance, Region
 
 _BalanceKey = tuple[Region, Commodity, str]
 _GroupedBalances = dict[_BalanceKey, dict[str, _ParsedQuantity]]
