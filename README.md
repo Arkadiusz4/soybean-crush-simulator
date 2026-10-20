@@ -36,7 +36,7 @@ only validates a positive step count.
 
 Python 3.12+, uv, and Hatchling provide dependency management and packaging.
 Pydantic and PyYAML handle configuration; Typer provides the CLI. Development uses
-Ruff, pytest, pytest-cov, and GitHub Actions. Streamlit is an optional dependency.
+Ruff, Pyright, pytest, pytest-cov, and GitHub Actions. Streamlit is an optional dependency.
 
 ## Installation
 
@@ -103,9 +103,10 @@ just install        # Install locked dependencies, including all groups
 just lint           # Run Ruff lint checks
 just format         # Apply Ruff formatting
 just format-check   # Check formatting without changing files
+just typecheck      # Check Python type annotations with Pyright
 just test           # Run pytest with the configured coverage settings
 just coverage       # Run pytest with explicit coverage options, matching CI
-just check          # Run lint, format-check, and coverage
+just check          # Run lint, format-check, typecheck, and coverage
 just cli            # Display CLI help
 just clean          # Remove caches and test reports; preserve .venv and datasets
 ```
@@ -114,8 +115,11 @@ Recipes run from the directory containing the `justfile`, including when invoked
 from a project subdirectory. Use `just check` before opening a pull request.
 
 Tests include branch coverage reporting with a 90% minimum. CI runs the same
-checks as `just check` in independent `lint` and `tests` jobs on Python 3.12,
+checks as `just check` in independent `lint`, `typecheck`, and `tests` jobs on Python 3.12,
 triggered by PRs targeting `main`, pushes to `main`, or manual execution.
+
+Pyright checks `src/` in standard mode, targeting Python 3.12. Its development
+dependency includes a Node runtime, so no separate Node installation is needed.
 
 For less frequent packaging and dependency tasks, use `uv build` to build the
 package, or `uv lock --upgrade` to update dependencies. Review lockfile changes

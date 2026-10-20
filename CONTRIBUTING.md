@@ -34,6 +34,7 @@ required approvals, or any repository settings.
 ```bash
 just lint
 just format-check
+just typecheck
 just test
 just cli
 uv run soybean-sim version
@@ -46,10 +47,11 @@ includes coverage reporting and a 90% minimum. To apply formatting, run
 `just format`. For reviewed automatic lint fixes, use
 `uv run ruff check --fix .` and inspect the diff.
 
-GitHub Actions runs independent `lint` and `tests` jobs on pull requests targeting
-`main`, pushes to `main`, and manual dispatch. Both use Python 3.12 and
+GitHub Actions runs independent `lint`, `typecheck`, and `tests` jobs on pull requests
+targeting `main`, pushes to `main`, and manual dispatch. All use Python 3.12 and
 `just install`, which installs all locked dependency groups through uv. CI runs
-`just lint`, `just format-check`, and `just coverage`, matching `just check` locally.
+`just lint`, `just format-check`, `just typecheck`, and `just coverage`, matching
+`just check` locally. Pyright checks `src/` in standard mode against Python 3.12.
 
 After dependency changes, regenerate `uv.lock` with `uv lock`, verify with
 `uv sync --locked`, and include both the dependency declaration and lockfile in
