@@ -28,6 +28,7 @@ exit code. Domain and configuration code do not depend on CLI or dashboard code.
 The USDA CSV loader lives in `data/usda/`: `mappings.py` holds verified identifiers
 and required columns, `parsing.py` validates observation metadata and quantities,
 and `loader.py` reads, filters, and groups CSV rows into `MarketBalance` records.
+`errors.py` defines the common data error and file, format, and observation categories.
 The package's `__init__.py` preserves the public `load_usda_psd_csv` and
 `USDADataError` imports from `soybean_sim.data.usda`.
 

@@ -93,6 +93,15 @@ omitted. Omitted region/commodity filters select all supported values, while emp
 collections select none. No matches return an empty tuple. Invalid filters raise
 `ValueError`; file and CSV problems raise `USDADataError`, a `ValueError` subclass.
 
+For selective handling, import these subclasses from `soybean_sim.data.usda`:
+
+- `USDAFileError`: the file cannot be opened, read, or decoded as UTF-8.
+- `USDAFormatError`: malformed CSV syntax, missing/invalid headers, or wrong row widths.
+- `USDAObservationError`: invalid quantities, units, years, descriptions, or duplicates
+  with conflicting values.
+
+All inherit from `USDADataError`, so existing catch blocks continue to work.
+
 `Market_Year` remains the original four-digit string. Loading several years does
 not construct `SimulationInput`, infer monthly flows, reconcile accounting
 equations, or establish a policy for historical EU membership or revisions.
