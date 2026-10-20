@@ -60,15 +60,19 @@ def _resolve_year_bounds(
             integer from 1 through 9999, or the lower bound exceeds the upper.
     """
 
+    if marketing_year is not None and (
+        start_year is not None
+        or end_year is not None
+        or not isinstance(marketing_year, str)
+        or not _YEAR_LABEL_PATTERN.fullmatch(marketing_year)
+    ):
+        raise ValueError(
+            "marketing_year cannot be combined with year range bounds"
+            if start_year is not None or end_year is not None
+            else "marketing_year must be a four-digit year string"
+        )
+
     if marketing_year is not None:
-        if start_year is not None or end_year is not None:
-            raise ValueError("marketing_year cannot be combined with year range bounds")
-
-        if not isinstance(marketing_year, str) or not _YEAR_LABEL_PATTERN.fullmatch(
-            marketing_year
-        ):
-            raise ValueError("marketing_year must be a four-digit year string")
-
         start_year = end_year = int(marketing_year)
 
     for bound_name, bound_value in (("start_year", start_year), ("end_year", end_year)):
