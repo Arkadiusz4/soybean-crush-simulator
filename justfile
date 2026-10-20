@@ -18,6 +18,10 @@ format:
 format-check:
     uv run --locked ruff format --check .
 
+# Check Python type annotations in the application package.
+typecheck:
+    uv run --locked pyright
+
 # Run tests (the project's pytest configuration already enables coverage).
 test:
     uv run --locked pytest
@@ -26,8 +30,8 @@ test:
 coverage:
     uv run --locked pytest --cov=soybean_sim --cov-report=term-missing
 
-# Run the CI lint, formatting, and test checks.
-check: lint format-check coverage
+# Run the CI lint, formatting, type, and test checks.
+check: lint format-check typecheck coverage
 
 # Display help for the implemented CLI commands.
 cli:
