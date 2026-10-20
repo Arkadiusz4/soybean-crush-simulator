@@ -1,5 +1,3 @@
-"""Command-line interface for package information and configuration validation."""
-
 from pathlib import Path
 from typing import Annotated
 
@@ -18,7 +16,7 @@ app = typer.Typer(
 
 @app.command()
 def version() -> None:
-    """Show the installed package version."""
+    """Print the installed package version to standard output."""
     typer.echo(__version__)
 
 
@@ -26,7 +24,7 @@ def version() -> None:
 def validate_config(
     path: Annotated[Path, typer.Argument(help="Path to a UTF-8 YAML configuration.")],
 ) -> None:
-    """Validate a configuration file without running a simulation."""
+    """Validate a local YAML file and print confirmation on success."""
     try:
         load_config(path)
     except ConfigurationError as exc:

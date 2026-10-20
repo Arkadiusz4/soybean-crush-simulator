@@ -19,7 +19,11 @@ NonEmptyString = Annotated[
 
 
 class MarketBalance(BaseModel):
-    """Reported marketing-year balance in metric tons; None means unobserved."""
+    """Record one region's marketing-year balance in nonnegative metric tonnes.
+
+    None means unobserved; only crush may be omitted. Preserve the source year label
+    without allocating flows to months or enforcing exact accounting balance.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -36,14 +40,18 @@ class MarketBalance(BaseModel):
 
     @model_validator(mode="after")
     def crush_applies_to_soybeans(self) -> Self:
-        """Crush is soybean input volume, not meal or oil output volume."""
+        """Check that crush measures soybean input and appears only on soybeans."""
         if self.crush_tonnes is not None and self.commodity != Commodity.SOYBEANS:
             raise ValueError("crush_tonnes applies only to soybeans")
         return self
 
 
 class CommodityPrice(BaseModel):
-    """Monthly reference price; month is represented by its first calendar day."""
+    """Record a positive, finite monthly reference price in USD per metric tonne.
+
+    The month is its first calendar day. The source label is required; prices are
+    not region-specific, and records are immutable.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -55,14 +63,17 @@ class CommodityPrice(BaseModel):
     @field_validator("month")
     @classmethod
     def month_starts_on_first_day(cls, month: date) -> date:
-        """Require an explicit monthly period instead of silently rounding dates."""
+        """Check that the date represents the first day of its month."""
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
         return month
 
 
 class Inventory(BaseModel):
-    """Known stock quantity for one region and commodity at initialization."""
+    """Record immutable initial stock for one region and commodity in metric tonnes.
+
+    Quantity must be finite and nonnegative; zero is known empty stock, not missing.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

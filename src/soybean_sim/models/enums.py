@@ -2,7 +2,10 @@ from enum import StrEnum
 
 
 class Region(StrEnum):
-    """Regions in the planned model; values are stable configuration identifiers."""
+    """Identify the four supported regions in settings and serialized records.
+
+    The European Union is represented as one region, rather than member states.
+    """
 
     UNITED_STATES = "united_states"
     BRAZIL = "brazil"
@@ -11,7 +14,7 @@ class Region(StrEnum):
 
 
 class Commodity(StrEnum):
-    """Commodities in the planned model."""
+    """Identify soybeans and their two modeled processing products: meal and oil."""
 
     SOYBEANS = "soybeans"
     SOYBEAN_MEAL = "soybean_meal"
