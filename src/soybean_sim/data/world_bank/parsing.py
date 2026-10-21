@@ -24,15 +24,15 @@ class ParsedPrice(NamedTuple):
 
 def validate_month_range(start_month: date | None, end_month: date | None) -> None:
     """Check inclusive first-of-month boundaries without accepting datetimes."""
+    if start_month is not None and end_month is not None and start_month > end_month:
+        raise ValueError("start_month must not exceed end_month")
+
     for name, boundary in (("start_month", start_month), ("end_month", end_month)):
         if boundary is None:
             continue
 
         if type(boundary) is not date or boundary.day != 1:
             raise ValueError(f"{name} must be a date on the first day of a month")
-
-    if start_month is not None and end_month is not None and start_month > end_month:
-        raise ValueError("start_month must not exceed end_month")
 
 
 def parse_month(source_month: object, source_context: str) -> date:
