@@ -1,8 +1,9 @@
 # Data sources
 
 Historical data will initialize regional quantities and reference prices. A local
-USDA PSD CSV loader is implemented; automatic downloads, API clients, World Bank
-loading, and monthly allocation are not. Full datasets are not bundled.
+USDA PSD CSV loader and World Bank monthly XLSX price loader are implemented.
+Automatic downloads, API clients, and monthly allocation are not. Full datasets
+are not bundled.
 
 ## USDA Production, Supply and Distribution (PSD)
 
@@ -113,6 +114,75 @@ provides monthly and annual historical price downloads. The project plans to use
 monthly soybean, soybean meal, and soybean oil prices as reference prices for
 initialization and comparison with model behavior.
 
+### Implemented local monthly price loader
+
+On the source page, choose **Monthly prices** under **Pink Sheet Data**, download
+the historical Excel workbook manually, and place it at
+`data/raw/CMO-Historical-Data-Monthly.xlsx`. Record the retrieval date and release
+label with the local dataset. The loader never downloads, saves, or modifies it.
+
+The local workbook inspected for this implementation is labeled
+`Updated on October 02, 2026`. Its `Monthly Prices` worksheet has commodity names
+in row 5, units in row 6, and observations from row 7. Column A contains calendar
+months such as `1960M01` and `2026M09`. The three series were found in Y–AA;
+the loader discovers them by header name so their columns may move.
+
+| Source header | Model commodity | Verified source unit |
+| --- | --- | --- |
+| Soybeans | `soybeans` | `($/mt)` |
+| Soybean meal | `soybean_meal` | `($/mt)` |
+| Soybean oil | `soybean_oil` | `($/mt)` |
+
+`($/mt)` means nominal USD per metric tonne, matching `CommodityPrice` directly.
+All three headers must be present exactly once outside column A and all three
+units must match, even when selecting fewer commodities. Surrounding whitespace
+is trimmed. Other worksheets and commodity series are not used as price inputs.
+Missing or changed layouts are errors rather than a reason to guess new mappings.
+
+```python
+from datetime import date
+
+from soybean_sim.data.world_bank import load_world_bank_prices
+from soybean_sim.models import Commodity
+
+prices = load_world_bank_prices(
+    "data/raw/CMO-Historical-Data-Monthly.xlsx",
+    start_month=date(2020, 1, 1),
+    end_month=date(2024, 12, 1),
+    commodities=[Commodity.SOYBEANS, Commodity.SOYBEAN_MEAL],
+)
+```
+
+The return type is `tuple[CommodityPrice, ...]`, sorted by calendar month and
+commodity identifier. Dates are the first day of each month. Bounds must be
+first-of-month `date` objects, not strings or datetimes, and are inclusive. None
+selects all supported commodities; an empty selection or no matches returns `()`.
+A valid header-only worksheet also returns `()`. Missing months are not generated.
+Each record has `data_source="World Bank Pink Sheet"`.
+
+Blank cells, whitespace-only strings, `...`, and `…` skip only the affected price.
+Other valid prices in that month remain. Unknown markers such as `NA` and `N/A`
+are errors. Known values must be positive and finite and fit the model's float
+representation. Numeric strings are accepted; booleans, dates, formulas, Excel
+errors, zero, and negative prices are rejected. No rounding, inflation or currency
+adjustment, conversion, interpolation, or forward-filling is applied.
+
+Duplicate keys are month and commodity. Equivalent decimal values count once;
+conflicting known values fail, even if they would convert to the same float.
+Missing duplicate cells are skipped and do not overwrite known prices.
+
+Blank worksheet rows are ignored. All other month labels must be valid before
+range filtering. Price values are validated only for selected months and
+commodities, after the complete header and unit checks. Invalid arguments raise
+`ValueError`; file, structure, and observation failures raise `WorldBankDataError`,
+also a `ValueError` subclass. Import it from `soybean_sim.data.world_bank`.
+Messages include the path and available sheet, row, commodity, and month context;
+underlying file or workbook errors retain their original exception as the cause.
+
+Tests use a six-month extract under `tests/fixtures/world_bank/` and never require
+the full raw workbook or network access. Integrating prices with USDA balances
+and constructing simulation inputs remain future work.
+
 Reference series must not be treated as observed transaction prices for all four
 regions. Any regional price differences or transport adjustments will require
 explicit modeling assumptions. Historical prices are not a direct forecast of
@@ -149,8 +219,8 @@ source label. Known initial stocks use `Inventory`. See the
    versions, selected periods, units, and usage or redistribution conditions.
 2. Preserve original files under root `data/`, with derived files kept separately.
    Implement ingestion code in `src/soybean_sim/data/`.
-3. The CSV loader maps identifiers and validates missing values, duplicate
-   observations, and source units. Complete coverage and revision policies remain
+3. The loaders map identifiers and validate missing values, duplicate observations,
+   and source units. Complete coverage and revision policies remain
    to be defined. Missing observations must not silently become zero.
 4. Check plausible stock and flow balances using documented source definitions,
    allowing for reporting differences and rounding rather than forcing equality.
