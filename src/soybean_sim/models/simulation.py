@@ -1,3 +1,5 @@
+"""Combine annual balances, monthly prices, and stocks into an initial snapshot."""
+
 from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator

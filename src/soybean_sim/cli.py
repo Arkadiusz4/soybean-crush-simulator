@@ -1,3 +1,5 @@
+"""Provide package information and YAML configuration validation commands."""
+
 from pathlib import Path
 from typing import Annotated
 

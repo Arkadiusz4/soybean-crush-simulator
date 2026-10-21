@@ -1,51 +1,39 @@
+"""Validate selected PSD observations and convert source quantities to metric tonnes."""
+
 import math
 import re
 from datetime import MAXYEAR, MINYEAR
 from decimal import Decimal, DecimalException, InvalidOperation
-from typing import NamedTuple
+from typing import Final, NamedTuple
 
+from . import mappings
 from .errors import USDADataError as USDADataError
 from .errors import USDAObservationError
-from .mappings import (
-    _ATTRIBUTES,
-    _COMMODITIES,
-    _QUANTITY_UNIT_DESCRIPTION,
-    _QUANTITY_UNIT_ID,
-    _REGIONS,
-    _TONNES_PER_SOURCE_UNIT,
-)
 
-_YEAR_LABEL_PATTERN = re.compile(r"[0-9]{4}")
+_YEAR_LABEL_PATTERN: Final = re.compile(r"[0-9]{4}")
 
 
-class _ParsedQuantity(NamedTuple):
+class ParsedQuantity(NamedTuple):
     """Pair an exact source decimal in 1000 MT with float tonnes; blanks become None."""
 
     source_value: Decimal | None
     tonnes: float | None
 
 
-def _resolve_year_bounds(
+def resolve_year_bounds(
     marketing_year: str | None, start_year: int | None, end_year: int | None
 ) -> tuple[int, int]:
     """Resolve one four-digit marketing-year label or inclusive integer year bounds.
 
     Use either a single year or ordered range bounds, defaulting to 1 and 9999.
     """
-
-    if marketing_year is not None and (
-        start_year is not None
-        or end_year is not None
-        or not isinstance(marketing_year, str)
-        or not _YEAR_LABEL_PATTERN.fullmatch(marketing_year)
-    ):
-        raise ValueError(
-            "marketing_year cannot be combined with year range bounds"
-            if start_year is not None or end_year is not None
-            else "marketing_year must be a four-digit year string"
-        )
-
     if marketing_year is not None:
+        if start_year is not None or end_year is not None:
+            raise ValueError("marketing_year cannot be combined with year range bounds")
+        if not isinstance(marketing_year, str) or not _YEAR_LABEL_PATTERN.fullmatch(
+            marketing_year
+        ):
+            raise ValueError("marketing_year must be a four-digit year string")
         start_year = end_year = int(marketing_year)
 
     for bound_name, bound_value in (("start_year", start_year), ("end_year", end_year)):
@@ -67,24 +55,22 @@ def _resolve_year_bounds(
     return lower_bound, upper_bound
 
 
-def _parse_marketing_year(value: str, source_context: str) -> str:
+def parse_marketing_year(value: str, source_context: str) -> str:
     """Validate and return the unchanged nonzero four-digit marketing-year label."""
-
     if not _YEAR_LABEL_PATTERN.fullmatch(value) or int(value) == 0:
         raise USDAObservationError(f"{source_context}: invalid Market_Year {value!r}")
 
     return value
 
 
-def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
+def _parse_quantity(value_text: str, source_context: str) -> ParsedQuantity:
     """Convert a trimmed 1000 MT cell to exact source decimals and float tonnes.
 
     Blank cells return two None values. Quantities must be finite and nonnegative,
     remaining representable after conversion without turning nonzero values to zero.
     """
-
     if not value_text:
-        return _ParsedQuantity(source_value=None, tonnes=None)
+        return ParsedQuantity(source_value=None, tonnes=None)
     try:
         # Decimal accepts underscores, which are not a PSD numeric representation.
         if "_" in value_text:
@@ -100,7 +86,7 @@ def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
             f"{source_context}: Value must be finite and nonnegative: {value_text!r}"
         )
     try:
-        tonnes = float(source_value * _TONNES_PER_SOURCE_UNIT)
+        tonnes = float(source_value * mappings.TONNES_PER_SOURCE_UNIT)
     except DecimalException as exc:
         raise USDAObservationError(
             f"{source_context}: Value cannot be represented in metric tonnes"
@@ -110,20 +96,19 @@ def _parse_quantity(value_text: str, source_context: str) -> _ParsedQuantity:
             f"{source_context}: Value cannot be represented in metric tonnes"
         )
 
-    return _ParsedQuantity(source_value=source_value, tonnes=tonnes)
+    return ParsedQuantity(source_value=source_value, tonnes=tonnes)
 
 
-def _parse_observation(row: dict[str, str], source_context: str) -> _ParsedQuantity:
+def parse_observation(row: dict[str, str], source_context: str) -> ParsedQuantity:
     """Validate a selected row's descriptions and unit, then convert its quantity.
 
     Expect trimmed cells with supported codes already selected by the loader.
     Only unit 08 / (1000 MT) is accepted. Return source decimals and metric tonnes,
     keeping blanks missing.
     """
-
-    _, commodity_description = _COMMODITIES[row["Commodity_Code"]]
-    _, country_name = _REGIONS[row["Country_Code"]]
-    _, attribute_description = _ATTRIBUTES[row["Attribute_ID"]]
+    _, commodity_description = mappings.COMMODITIES[row["Commodity_Code"]]
+    _, country_name = mappings.REGIONS[row["Country_Code"]]
+    _, attribute_description = mappings.ATTRIBUTES[row["Attribute_ID"]]
 
     expected_descriptions = {
         "Commodity_Description": commodity_description,
@@ -142,13 +127,14 @@ def _parse_observation(row: dict[str, str], source_context: str) -> _ParsedQuant
     source_unit_id = row["Unit_ID"]
     source_unit_description = row["Unit_Description"]
     if (
-        source_unit_id != _QUANTITY_UNIT_ID
-        or source_unit_description != _QUANTITY_UNIT_DESCRIPTION
+        source_unit_id != mappings.QUANTITY_UNIT_ID
+        or source_unit_description != mappings.QUANTITY_UNIT_DESCRIPTION
     ):
         raise USDAObservationError(
             f"{source_context}: unsupported or inconsistent unit "
             f"{source_unit_id!r} / {source_unit_description!r}; "
-            f"expected {_QUANTITY_UNIT_ID!r} / {_QUANTITY_UNIT_DESCRIPTION!r}"
+            f"expected {mappings.QUANTITY_UNIT_ID!r} / "
+            f"{mappings.QUANTITY_UNIT_DESCRIPTION!r}"
         )
 
     return _parse_quantity(row["Value"], source_context)

@@ -12,16 +12,16 @@ from soybean_sim.data.usda import (
     USDAObservationError,
     errors,
     load_usda_psd_csv,
+    parsing,
 )
 from soybean_sim.data.usda.loader import load_usda_psd_csv as implementation
-from soybean_sim.data.usda.parsing import USDADataError as parsing_error
 from soybean_sim.models import Commodity, Region
 
 
 def test_public_exports_refer_to_the_implementation() -> None:
     """Check that package imports expose the original loader and exception objects."""
     assert load_usda_psd_csv is implementation
-    assert USDADataError is parsing_error
+    assert USDADataError is parsing.USDADataError
 
 
 @pytest.mark.parametrize(
@@ -172,6 +172,15 @@ def test_invalid_filters_are_rejected(
     with pytest.raises(ValueError) as caught:
         load_usda_psd_csv(sample_csv, **filters)
     assert not isinstance(caught.value, USDADataError)
+
+
+@pytest.mark.parametrize("marketing_year", ["not-a-year", 2024, "0000"])
+def test_conflicting_year_selectors_take_precedence_over_label_validation(
+    sample_csv: Path, marketing_year: str | int
+) -> None:
+    """Check selector conflicts before validating the supplied year label."""
+    with pytest.raises(ValueError, match="cannot be combined with year range bounds"):
+        load_usda_psd_csv(sample_csv, marketing_year=marketing_year, start_year=2024)
 
 
 def test_output_order_is_stable_when_rows_are_reordered(

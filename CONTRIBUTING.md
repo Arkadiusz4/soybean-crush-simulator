@@ -29,35 +29,14 @@ or `chore:`. Write a short imperative summary, for example
 These are team conventions; this bootstrap does not configure branch protection,
 required approvals, or any repository settings.
 
-## Imports and public APIs
+## Python Code Style
 
-Use relative imports between sibling modules within a functional subpackage,
-and absolute imports across subpackages or when consuming a public API:
-
-```python
-# Inside soybean_sim.data.usda.loader:
-from soybean_sim.models import Commodity, MarketBalance, Region
-
-from .mappings import _ATTRIBUTES
-from .parsing import _parse_observation
-
-# In a consumer outside the USDA package:
-from soybean_sim.data.usda import USDADataError, load_usda_psd_csv
-```
-
-Keep imports at module level, avoid wildcard imports, and let Ruff order them.
-Within a subpackage, import from the sibling implementation module rather than
-its `__init__.py` to avoid circular imports.
-
-Public names have no leading underscore; internal helpers use one. Sibling
-modules may share internal helpers, but consumers outside the subpackage should
-use its public API so internal refactors do not break them. Compatibility tests
-may inspect implementation modules to verify public exports.
-
-Re-export stable entry points in the relevant `__init__.py` and list them in
-`__all__`, as in `models` and `data.usda`. Keep helpers internal and avoid adding
-exports for unimplemented components. Underscores signal intent; `__all__`
-controls wildcard imports. Neither enforces access restrictions.
+Use the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)
+as a reference, with our [project conventions](docs/style-guide.md) for naming,
+constants, module privacy, concise docstrings, types, function readability,
+exceptions, and comments. Keep the established import policy. Ruff enforces
+naming and Google-style docstrings alongside formatting; Pyright checks types.
+Run `just check` before submitting changes.
 
 ## Quality checks
 

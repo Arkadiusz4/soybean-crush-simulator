@@ -38,7 +38,13 @@ cache-dir = ".artifacts/ruff"
 extend-exclude = [".artifacts"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "N", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D100"]
 
 [tool.pyright]
 include = ["src"]

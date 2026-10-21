@@ -1,3 +1,5 @@
+"""Expose stable domain identifiers and validated market and simulation input models."""
+
 from .enums import Commodity, Region
 from .market import (
     CommodityPrice,

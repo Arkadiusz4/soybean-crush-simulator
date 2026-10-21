@@ -1,3 +1,5 @@
+"""Define stable region and commodity identifiers shared by settings and records."""
+
 from enum import StrEnum
 
 

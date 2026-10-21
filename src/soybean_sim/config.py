@@ -1,3 +1,5 @@
+"""Load local YAML run settings into immutable, validated configuration models."""
+
 from pathlib import Path
 from typing import Annotated
 
@@ -51,17 +53,17 @@ def load_config(path: str | Path) -> SimulationConfig:
         raise ConfigurationError(f"Cannot read '{config_path}': {exc}") from exc
 
     try:
-        data = yaml.safe_load(contents)
+        configuration_values = yaml.safe_load(contents)
     except yaml.YAMLError as exc:
         raise ConfigurationError(f"Invalid YAML in '{config_path}': {exc}") from exc
 
-    if not isinstance(data, dict):
+    if not isinstance(configuration_values, dict):
         raise ConfigurationError(
             f"Invalid configuration in '{config_path}': expected a YAML mapping"
         )
 
     try:
-        return SimulationConfig.model_validate(data)
+        return SimulationConfig.model_validate(configuration_values)
     except ValidationError as exc:
         details = "\n".join(
             f"  {'.'.join(map(str, error['loc']))}: {error['msg']}"
