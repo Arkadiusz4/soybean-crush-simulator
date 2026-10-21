@@ -15,11 +15,11 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `agents/` | Producer, crusher, and trader decisions |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
-| `data/` inside the package | Local USDA annual CSV balances and World Bank monthly XLSX prices |
+| `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
 
 Root `configs/` contains a baseline YAML example. Root `data/` is for local datasets
 and derived files, ignored by Git except for its README. Unit tests cover enums,
-configuration, and file errors; integration tests exercise the CLI.
+configuration, and file errors; integration tests exercise the CLI and input preparation.
 
 Configuration loading uses `yaml.safe_load` and Pydantic. `ConfigurationError`
 reports file and field context; the CLI converts it to stderr output and a nonzero
@@ -36,7 +36,7 @@ The package's `__init__.py` preserves the public `load_usda_psd_csv` and
 verified source series and layout, `parsing.py` validates months and prices, and
 `loader.py` reads and groups XLSX observations. Its public package exposes
 `load_world_bank_prices` and `WorldBankDataError`. Both historical loaders return
-records independently; combining them into simulation inputs is not implemented.
+records independently; `data/builder.py` combines their output into simulation inputs.
 
 ## Historical data selection
 
@@ -101,6 +101,27 @@ Empty input returns an empty tuple.
 
 The builder does not select periods, adjust stocks to the price month, or assemble
 `SimulationInput`. See the [inventory timing assumption](assumptions.md#initial-inventory-reference).
+
+## Simulation input assembly
+
+`build_simulation_input()` is exported from `soybean_sim.data` and composes three
+existing stages in `data/builder.py`:
+
+1. `select_market_data()` selects complete regional balances for an explicit
+   marketing-year label and global prices for an independent calendar month.
+2. `build_initial_inventories()` maps selected beginning stocks into inventories.
+3. `SimulationInput` validates and stores the balances, prices, and inventories.
+
+Selection and inventory errors propagate as `MarketDataSelectionError` and
+`InventoryInitializationError`; Pydantic enforces the final model's invariants.
+The builder adds no separate validation policy. Results retain the components'
+deterministic ordering and leave source collections unchanged.
+
+This is baseline initialization, not a reconstruction of inventories on the
+selected price month. The builder reads no files, allocates no monthly flows,
+applies no seasonal or stock adjustments, and does not execute a simulation.
+See the [loader-to-input example](data-sources.md#building-simulation-inputs)
+and [inventory timing assumption](assumptions.md#initial-inventory-reference).
 
 ## Market input models
 

@@ -27,7 +27,7 @@ Implemented: an installable package, region and commodity enums, immutable
 Pydantic configuration and market input models, YAML validation, a Typer CLI,
 local USDA PSD CSV and World Bank monthly XLSX price loading, historical record
 selection with completeness validation, initial inventories from beginning stocks,
-tests, and CI.
+validated simulation input assembly, tests, and CI.
 
 Agents, the simulation engine, economic rules, scenario effects, results, and
 dashboard functionality are **not implemented**. Monthly

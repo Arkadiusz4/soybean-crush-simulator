@@ -51,6 +51,10 @@ inventories on the selected calendar price month. The builder does not model
 inventory changes between the marketing-year start and the simulation start
 month; temporal alignment remains an open modeling decision.
 
+`build_simulation_input()` combines these stocks and annual balances with an
+explicitly selected monthly global price. This is a baseline initialization
+assumption, not a historical reconstruction of a specific calendar date.
+
 ## Existing configuration conventions
 
 `duration_steps` is a positive integer and `random_seed` is a nonnegative integer.
