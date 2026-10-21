@@ -38,6 +38,49 @@ verified source series and layout, `parsing.py` validates months and prices, and
 `load_world_bank_prices` and `WorldBankDataError`. Both historical loaders return
 records independently; combining them into simulation inputs is not implemented.
 
+## Historical data selection
+
+`data/selection.py` selects already validated records from either loader, without
+reading files or constructing simulation state. Its public API is available from
+`soybean_sim.data`:
+
+```python
+from datetime import date
+
+from soybean_sim.data import select_market_data
+from soybean_sim.models import Commodity, Region
+
+# balances and prices are model instances already returned by the loaders.
+selected_balances, selected_prices = select_market_data(
+    balances,
+    prices,
+    marketing_year="2020/21",
+    price_month=date(2021, 1, 1),
+    regions=[Region.BRAZIL, Region.ARGENTINA],
+    commodities=[Commodity.SOYBEANS, Commodity.SOYBEAN_MEAL],
+)
+```
+
+The result contains two tuples: balances sorted by region and commodity, and
+prices sorted by commodity. Every explicitly requested region/commodity pair is
+required, with one global price per commodity. Missing requested records or
+conflicts produce `MarketDataSelectionError`, a `ValueError` subclass exported
+from the same package. Missing identifiers are listed deterministically.
+
+The marketing-year selector is a nonempty string label, trimmed like the model's
+field; it need not be a four-digit year. The price month must independently be a
+first-of-month `date`, not a string or datetime. Region and commodity collections
+must be nonempty; enum members and their string identifiers are accepted, and
+repeated requests count once. Bare strings are not identifier collections.
+
+Only matching records participate in duplicate checks. Equal records count once;
+different quantities, prices, or price-source labels for the same selected key
+are conflicts. Existing model instances and unknown quantities remain unchanged.
+Completeness means record presence, not that every quantity is known. There is
+no fallback to another period, annual-to-monthly allocation, inventory creation,
+or `SimulationInput` assembly. Any valid iterable, including a one-pass generator,
+can supply the records or requested identifiers.
+
 ## Market input models
 
 The following Pydantic models are implemented in `soybean_sim.models` for use by

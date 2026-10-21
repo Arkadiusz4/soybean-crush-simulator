@@ -25,7 +25,8 @@ initialization from USDA PSD and World Bank data; and an optional Streamlit dash
 
 Implemented: an installable package, region and commodity enums, immutable
 Pydantic configuration and market input models, YAML validation, a Typer CLI,
-local USDA PSD CSV and World Bank monthly XLSX price loading, tests, and CI.
+local USDA PSD CSV and World Bank monthly XLSX price loading, historical record
+selection with completeness validation, tests, and CI.
 
 Agents, the simulation engine, economic rules, scenario effects, results, and
 dashboard functionality are **not implemented**. Monthly
