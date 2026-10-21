@@ -39,6 +39,18 @@ future invariants. Input models already reject negative or nonfinite quantities,
 but no market engine enforces state transitions yet. Raw historical balances are
 not required to satisfy an exact accounting equation.
 
+## Initial inventory reference
+
+The implemented inventory builder uses USDA `beginning_stocks_tonnes` as the
+initial quantity in metric tonnes. Missing stocks are rejected, known zero stocks
+are preserved, and ending stocks are not used as a substitute.
+
+These are annual marketing-year reference values representing stocks at the
+beginning of the selected marketing year. They are not necessarily actual
+inventories on the selected calendar price month. The builder does not model
+inventory changes between the marketing-year start and the simulation start
+month; temporal alignment remains an open modeling decision.
+
 ## Existing configuration conventions
 
 `duration_steps` is a positive integer and `random_seed` is a nonnegative integer.
@@ -60,7 +72,7 @@ Validation accepts other names without checking a scenario registry.
 | Trade | Route capacity, transportation costs, lead times, feasibility, and trade outside the four regions |
 | Production timing | Seasonality, harvest months, and monthly allocation of annual quantities |
 | Scenarios | Drought severity, demand increases, transportation cost shocks, duration, and timing |
-| Historical initialization | Source releases, start month, regional mapping, initial stocks, and regional price differences |
+| Historical initialization | Source releases, start month, regional mapping, temporal alignment of initial stocks, and regional price differences |
 | Accounting and results | Physical units, currency and inflation treatment, storage costs, and monthly result structure |
 | Randomness and evaluation | Stochastic processes, reproducibility guarantees, and validation metrics |
 
