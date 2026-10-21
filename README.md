@@ -138,3 +138,4 @@ and rerun `just install` and `just check` after updating dependencies.
 - [Historical data sources and processing](docs/data-sources.md)
 - [Modeling assumptions and open decisions](docs/assumptions.md)
 - [Contributing and development workflow](CONTRIBUTING.md)
+- [Python style guide](docs/style-guide.md)
