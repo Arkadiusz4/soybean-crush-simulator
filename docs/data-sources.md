@@ -180,8 +180,8 @@ Messages include the path and available sheet, row, commodity, and month context
 underlying file or workbook errors retain their original exception as the cause.
 
 Tests use a six-month extract under `tests/fixtures/world_bank/` and never require
-the full raw workbook or network access. Integrating prices with USDA balances
-and constructing simulation inputs remain future work.
+the full raw workbook or network access. The input builder below combines loaded
+prices with USDA balances.
 
 Reference series must not be treated as observed transaction prices for all four
 regions. Any regional price differences or transport adjustments will require
@@ -213,6 +213,49 @@ prices use `CommodityPrice` with USD per metric ton, a first-of-month date, and 
 source label. Known initial stocks use `Inventory`. See the
 [model contracts](architecture.md#market-input-models).
 
+## Building simulation inputs
+
+After loading local files, `build_simulation_input()` selects complete records,
+initializes inventories from beginning stocks, and constructs a validated
+`SimulationInput`:
+
+```python
+from datetime import date
+
+from soybean_sim.data import build_simulation_input
+from soybean_sim.data.usda import load_usda_psd_csv
+from soybean_sim.data.world_bank import load_world_bank_prices
+from soybean_sim.models import Commodity, Region
+
+balances = load_usda_psd_csv("data/raw/psd_oilseeds.csv", marketing_year="2024")
+prices = load_world_bank_prices(
+    "data/raw/CMO-Historical-Data-Monthly.xlsx",
+    start_month=date(2026, 7, 1),
+    end_month=date(2026, 7, 1),
+)
+initial = build_simulation_input(
+    balances,
+    prices,
+    marketing_year="2024",
+    price_month=date(2026, 7, 1),
+    regions=[Region.BRAZIL],
+    commodities=[Commodity.SOYBEANS],
+)
+```
+
+Choose both periods explicitly for the intended baseline; the example does not
+imply that 2024 beginning stocks are actual July 2026 inventories. Annual balances
+remain annual, prices remain global monthly USD/tonne references, and inventories
+use beginning stocks without a calendar-month adjustment. See the
+[inventory timing assumption](assumptions.md#initial-inventory-reference).
+
+Every requested region/commodity balance and one global price per commodity must
+exist. Invalid, missing, or conflicting selections retain `MarketDataSelectionError`;
+missing selected beginning stocks retain `InventoryInitializationError`. Both are
+available from `soybean_sim.data`. No missing value is estimated or replaced with
+zero or ending stocks. Loading, monthly allocation, seasonal adjustments, and
+simulation execution remain outside this builder.
+
 ## Processing and remaining work
 
 1. Start with downloaded exports. Record source URLs, retrieval dates, release
@@ -220,12 +263,14 @@ source label. Known initial stocks use `Inventory`. See the
 2. Preserve original files under root `data/`, with derived files kept separately.
    Implement ingestion code in `src/soybean_sim/data/`.
 3. The loaders map identifiers and validate missing values, duplicate observations,
-   and source units. Complete coverage and revision policies remain
-   to be defined. Missing observations must not silently become zero.
+   and source units. The input builder requires coverage of the requested pairs
+   and commodity prices. Revision policies remain open; missing observations
+   must not silently become zero.
 4. Check plausible stock and flow balances using documented source definitions,
    allowing for reporting differences and rounding rather than forcing equality.
-5. Apply the agreed monthly allocation and pass validated inputs to initialization.
-   Future tests should use small redistributable fixtures rather than live services.
+5. Assemble the baseline input with the builder above. Monthly flow allocation
+   and stock alignment require future modeling decisions before engine execution.
+   Tests use small fixtures rather than live services.
 
 Production, use, trade, stocks, crushing activity, and reference prices are expected
 historical inputs. Monthly allocation, agent rules, price adjustment, crush yields,
