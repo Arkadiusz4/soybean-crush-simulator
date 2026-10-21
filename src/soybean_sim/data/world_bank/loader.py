@@ -105,7 +105,7 @@ def _series_columns(worksheet: Worksheet, context: str) -> dict[Commodity, int]:
         _validate_price_unit(source_unit, header, context)
         columns[commodity] = column_number - 1
     _check_required_series(columns, context)
-    
+
     return columns
 
 
@@ -114,7 +114,7 @@ def _iter_series_headers(worksheet: Worksheet) -> Iterator[tuple[int, str]]:
     for column_number, cell in enumerate(worksheet[mappings.HEADER_ROW], start=1):
         if not isinstance(cell.value, str):
             continue
-        
+
         header = cell.value.strip()
         if header in mappings.SERIES:
             yield column_number, header
