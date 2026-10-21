@@ -4,9 +4,9 @@ from datetime import MAXYEAR, MINYEAR
 from decimal import Decimal, DecimalException, InvalidOperation
 from typing import NamedTuple
 
-from soybean_sim.data.usda.errors import USDADataError as USDADataError
-from soybean_sim.data.usda.errors import USDAObservationError
-from soybean_sim.data.usda.mappings import (
+from .errors import USDADataError as USDADataError
+from .errors import USDAObservationError
+from .mappings import (
     _ATTRIBUTES,
     _COMMODITIES,
     _QUANTITY_UNIT_DESCRIPTION,

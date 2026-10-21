@@ -1,12 +1,12 @@
-from soybean_sim.models.enums import Commodity, Region
-from soybean_sim.models.market import (
+from .enums import Commodity, Region
+from .market import (
     CommodityPrice,
     Inventory,
     MarketBalance,
     NonEmptyString,
     NonNegativeTonnes,
 )
-from soybean_sim.models.simulation import SimulationInput
+from .simulation import SimulationInput
 
 __all__ = [
     "Commodity",
