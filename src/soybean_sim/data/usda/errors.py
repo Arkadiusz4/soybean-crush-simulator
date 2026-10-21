@@ -1,3 +1,6 @@
+"""Distinguish file access, CSV structure, and observation failures in PSD loading."""
+
+
 class USDADataError(ValueError):
     """Base error for reading or validating local USDA PSD data."""
 

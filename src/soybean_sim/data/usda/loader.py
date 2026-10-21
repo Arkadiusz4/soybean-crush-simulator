@@ -1,29 +1,20 @@
+"""Group local USDA attribute rows into annual balances without monthly allocation."""
+
 import csv
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from soybean_sim.models import Commodity, MarketBalance, Region
 
+from . import mappings, parsing
 from .errors import (
     USDAFileError,
     USDAFormatError,
     USDAObservationError,
 )
-from .mappings import (
-    _ATTRIBUTES,
-    _COMMODITIES,
-    _REGIONS,
-    _REQUIRED_COLUMNS,
-)
-from .parsing import (
-    _parse_marketing_year,
-    _parse_observation,
-    _ParsedQuantity,
-    _resolve_year_bounds,
-)
 
 _BalanceKey = tuple[Region, Commodity, str]
-_GroupedBalances = dict[_BalanceKey, dict[str, _ParsedQuantity]]
+_GroupedBalances = dict[_BalanceKey, dict[str, parsing.ParsedQuantity]]
 
 
 def load_usda_psd_csv(
@@ -45,8 +36,7 @@ def load_usda_psd_csv(
     equivalent duplicates count once, and no matches return an empty tuple.
     Annual quantities are never allocated to months.
     """
-
-    year_bounds = _resolve_year_bounds(marketing_year, start_year, end_year)
+    year_bounds = parsing.resolve_year_bounds(marketing_year, start_year, end_year)
     selected_regions = (
         set(Region) if regions is None else {Region(region) for region in regions}
     )
@@ -77,8 +67,7 @@ def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
 
     Check missing names first; allow unrelated extra columns without renaming them.
     """
-
-    missing_columns = _REQUIRED_COLUMNS - set(columns)
+    missing_columns = mappings.REQUIRED_COLUMNS - set(columns)
     if missing_columns:
         raise USDAFormatError(
             f"{csv_path}: missing required columns: "
@@ -90,7 +79,7 @@ def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
 
 
 def _read_observations(
-    reader: csv.DictReader,
+    reader: csv.DictReader[str],
     csv_path: Path,
     year_bounds: tuple[int, int],
     selected_regions: set[Region],
@@ -101,7 +90,6 @@ def _read_observations(
     The reader must have a validated header. Year bounds are inclusive. Retain exact
     source decimals for duplicate comparisons alongside converted tonnes.
     """
-
     grouped_observations: _GroupedBalances = {}
 
     for raw_row in reader:
@@ -115,7 +103,7 @@ def _read_observations(
             continue
 
         balance_key, field_name = selection
-        quantity = _parse_observation(row, source_context)
+        quantity = parsing.parse_observation(row, source_context)
         _record_observation(
             grouped_observations, balance_key, field_name, quantity, source_context
         )
@@ -123,11 +111,18 @@ def _read_observations(
     return grouped_observations
 
 
-def _normalize_csv_row(row: dict[str, str], source_context: str) -> dict[str, str]:
+def _normalize_csv_row(
+    row: Mapping[str | None, str | list[str] | None], source_context: str
+) -> dict[str, str]:
     """Check row width and strip surrounding whitespace from each cell."""
-    if None in row or any(value is None for value in row.values()):
-        raise USDAFormatError(f"{source_context}: row length does not match CSV header")
-    return {column_name: value.strip() for column_name, value in row.items()}
+    normalized_row = {}
+    for column_name, cell_value in row.items():
+        if column_name is None or not isinstance(cell_value, str):
+            raise USDAFormatError(
+                f"{source_context}: row length does not match CSV header"
+            )
+        normalized_row[column_name] = cell_value.strip()
+    return normalized_row
 
 
 def _select_observation(
@@ -143,9 +138,8 @@ def _select_observation(
     Ignore meal/oil crush before parsing years and verify recognized attribute IDs
     before year filtering. Other metadata and values are parsed later.
     """
-
-    commodity_mapping = _COMMODITIES.get(row["Commodity_Code"])
-    region_mapping = _REGIONS.get(row["Country_Code"])
+    commodity_mapping = mappings.COMMODITIES.get(row["Commodity_Code"])
+    region_mapping = mappings.REGIONS.get(row["Country_Code"])
     if commodity_mapping is None or region_mapping is None:
         return None
 
@@ -154,10 +148,12 @@ def _select_observation(
     if commodity not in selected_commodities or region not in selected_regions:
         return None
 
-    attribute_mapping = _ATTRIBUTES.get(row["Attribute_ID"])
+    attribute_mapping = mappings.ATTRIBUTES.get(row["Attribute_ID"])
 
     if attribute_mapping is None:
-        known_descriptions = {description for _, description in _ATTRIBUTES.values()}
+        known_descriptions = {
+            description for _, description in mappings.ATTRIBUTES.values()
+        }
 
         if row["Attribute_Description"] in known_descriptions:
             raise USDAObservationError(
@@ -171,7 +167,7 @@ def _select_observation(
     if field_name == "crush_tonnes" and commodity != Commodity.SOYBEANS:
         return None
 
-    marketing_year = _parse_marketing_year(row["Market_Year"], source_context)
+    marketing_year = parsing.parse_marketing_year(row["Market_Year"], source_context)
     lower_bound, upper_bound = year_bounds
     if not lower_bound <= int(marketing_year) <= upper_bound:
         return None
@@ -183,7 +179,7 @@ def _record_observation(
     grouped_observations: _GroupedBalances,
     balance_key: _BalanceKey,
     field_name: str,
-    quantity: _ParsedQuantity,
+    quantity: parsing.ParsedQuantity,
     source_context: str,
 ) -> None:
     """Store an attribute in place, comparing source decimals rather than floats.
@@ -191,7 +187,6 @@ def _record_observation(
     Equivalent duplicates count once. None stays distinct from a known quantity
     when checking for conflicting observations.
     """
-
     attribute_quantities = grouped_observations.setdefault(balance_key, {})
     previous_quantity = attribute_quantities.get(field_name)
     if (
@@ -214,14 +209,13 @@ def _build_balances(
     Absent attributes become None; recorded zeroes remain zero. Quantities are
     already in tonnes and are not imputed or reconciled here.
     """
-
     balances = []
     for balance_key in sorted(grouped_observations):
         region, commodity, marketing_year = balance_key
         attribute_quantities = grouped_observations[balance_key]
         quantities_in_tonnes = {}
 
-        for field_name, _ in _ATTRIBUTES.values():
+        for field_name, _ in mappings.ATTRIBUTES.values():
             quantity = attribute_quantities.get(field_name)
             quantities_in_tonnes[field_name] = (
                 None if quantity is None else quantity.tonnes

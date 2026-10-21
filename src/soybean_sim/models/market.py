@@ -1,3 +1,5 @@
+"""Validate annual balances, monthly USD prices, and initial inventories in tonnes."""
+
 from datetime import date
 from typing import Annotated, Self
 
