@@ -15,7 +15,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `agents/` | Producer, crusher, and trader decisions |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
-| `data/` inside the package | Local USDA PSD CSV loading; further preprocessing is planned |
+| `data/` inside the package | Local USDA annual CSV balances and World Bank monthly XLSX prices |
 
 Root `configs/` contains a baseline YAML example. Root `data/` is for local datasets
 and derived files, ignored by Git except for its README. Unit tests cover enums,
@@ -31,6 +31,12 @@ and `loader.py` reads, filters, and groups CSV rows into `MarketBalance` records
 `errors.py` defines the common data error and file, format, and observation categories.
 The package's `__init__.py` preserves the public `load_usda_psd_csv` and
 `USDADataError` imports from `soybean_sim.data.usda`.
+
+`data/world_bank/` follows the same focused layout: `mappings.py` describes the
+verified source series and layout, `parsing.py` validates months and prices, and
+`loader.py` reads and groups XLSX observations. Its public package exposes
+`load_world_bank_prices` and `WorldBankDataError`. Both historical loaders return
+records independently; combining them into simulation inputs is not implemented.
 
 ## Market input models
 

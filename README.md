@@ -25,17 +25,18 @@ initialization from USDA PSD and World Bank data; and an optional Streamlit dash
 
 Implemented: an installable package, region and commodity enums, immutable
 Pydantic configuration and market input models, YAML validation, a Typer CLI,
-local USDA PSD CSV loading, tests, and CI.
+local USDA PSD CSV and World Bank monthly XLSX price loading, tests, and CI.
 
-Agents, the simulation engine, economic rules, World Bank ingestion, scenario
-effects, results, and dashboard functionality are **not implemented**. Monthly
+Agents, the simulation engine, economic rules, scenario effects, results, and
+dashboard functionality are **not implemented**. Monthly
 steps are a modeling decision for the future engine; the current configuration
 only validates a positive step count.
 
 ## Technology stack
 
 Python 3.12+, uv, and Hatchling provide dependency management and packaging.
-Pydantic and PyYAML handle configuration; Typer provides the CLI. Development uses
+Pydantic and PyYAML handle configuration; Typer provides the CLI and openpyxl reads
+local Excel price data. Development uses
 Ruff, Pyright, pytest, pytest-cov, and GitHub Actions. Streamlit is an optional dependency.
 
 ## Installation

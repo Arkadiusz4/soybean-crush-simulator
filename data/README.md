@@ -53,7 +53,42 @@ All four types are available from `soybean_sim.data.usda`.
 
 The loader preserves `Market_Year` as its four-digit string. `Calendar_Year` and
 `Month` are not monthly production periods and do not affect grouping. No monthly
-allocation, price loading, or simulation initialization is implemented here.
+allocation or simulation initialization is performed by the USDA loader.
+
+## World Bank Pink Sheet monthly prices
+
+1. Open the official [Commodity Markets page](https://www.worldbank.org/en/research/commodity-markets)
+   and download **Monthly prices** from the **Pink Sheet Data** section.
+2. Keep the workbook at `data/raw/CMO-Historical-Data-Monthly.xlsx`. Record its
+   retrieval date and update label in a local manifest. Keep the original unchanged.
+
+```python
+from soybean_sim.data.world_bank import load_world_bank_prices
+
+prices = load_world_bank_prices("data/raw/CMO-Historical-Data-Monthly.xlsx")
+```
+
+The loader reads `Monthly Prices` with names in row 5, units in row 6, and month
+labels in column A from row 7. It locates Soybeans, Soybean meal, and Soybean oil
+by name and verifies their `($/mt)` units: nominal USD per metric tonne. Labels
+such as `2026M09` become first-of-month dates. Results are `CommodityPrice` records
+sorted by month and commodity, labeled `World Bank Pink Sheet`.
+
+Optional `start_month` and `end_month` filters are inclusive first-of-month Python
+dates; `commodities` selects a subset of the project's enum values. No matches or
+an empty commodity selection returns `()`. All three headers and units are still
+required. These are global reference prices, not regional transaction prices.
+
+Blank prices and the verified `...` / `…` markers are skipped individually.
+Unknown markers, invalid numbers, nonfinite values, and nonpositive prices fail.
+Equivalent duplicates count once; conflicting known values fail. Missing duplicate
+cells do not replace known values. No months, prices, or regional adjustments are
+invented. File and data failures use `WorldBankDataError`, available from the same
+public package; invalid filter arguments use `ValueError`.
+
+See [the detailed loader contract](../docs/data-sources.md#implemented-local-monthly-price-loader)
+for filtering, validation order, and limitations. The small fixture under
+`tests/fixtures/world_bank/` allows offline tests without this raw workbook.
 
 See [data sources](../docs/data-sources.md) for verified identifier mappings and
 remaining ingestion decisions. Python ingestion code lives in
