@@ -81,6 +81,27 @@ no fallback to another period, annual-to-monthly allocation, inventory creation,
 or `SimulationInput` assembly. Any valid iterable, including a one-pass generator,
 can supply the records or requested identifiers.
 
+## Initial inventory builder
+
+`data/inventory.py` converts selected balances into inventories through the public
+data package API:
+
+```python
+from soybean_sim.data import build_initial_inventories
+
+inventories = build_initial_inventories(selected_balances)
+```
+
+The result is a tuple sorted by region and commodity, with one inventory per
+balance. `beginning_stocks_tonnes` becomes `quantity_tonnes` without changing units
+or source records. Known zero stocks are valid. Missing beginning stocks and any
+repeated region/commodity pair, even an identical record or another marketing
+year, produce `InventoryInitializationError` from the same public package.
+Empty input returns an empty tuple.
+
+The builder does not select periods, adjust stocks to the price month, or assemble
+`SimulationInput`. See the [inventory timing assumption](assumptions.md#initial-inventory-reference).
+
 ## Market input models
 
 The following Pydantic models are implemented in `soybean_sim.models` for use by
