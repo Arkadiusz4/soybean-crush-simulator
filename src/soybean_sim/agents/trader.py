@@ -109,7 +109,7 @@ class Trader:
         """Request soybean demand independently of current regional soybean stock."""
         market_price = self._commodity_price(snapshot, Commodity.SOYBEANS)
         price_ratio = market_price / self.config.reference_soybean_price_usd_per_tonne
-        
+
         quantity = (
             self.config.maximum_monthly_purchase_tonnes
             * self._purchase_fraction(price_ratio)
