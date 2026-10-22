@@ -12,7 +12,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `models/` | Shared enums, market records, simulation inputs, and monthly observations |
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
-| `agents/` | Agent contracts, decision models, and price-responsive Producer offers |
+| `agents/` | Agent contracts, Producer offers, and margin-based Crusher requests |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
@@ -199,7 +199,7 @@ Creating `proposal` executes nothing and changes neither stocks nor prices. The
 example uses the [baseline beginning-stocks assumption](assumptions.md#initial-inventory-reference);
 it does not reconstruct stocks at the selected price month. Identity and decision
 models live in `agents/models.py`; the protocol lives in `agents/base.py`.
-Crusher and trader rules, checks of returned identity/month against the calling
+Trader rules, checks of returned identity/month against the calling
 agent, feasibility, market execution, and inventory updates remain future work.
 
 ## Producer supply heuristic
@@ -252,6 +252,70 @@ growth, harvesting, new production, or annual-to-monthly allocation. Calling
 `decide()` is deterministic and does not reserve, subtract, or sell stock; repeated
 calls with the same snapshot propose the same offer. Future execution must own
 inventory changes and settlement.
+
+## Crusher processing heuristic
+
+`agents/crusher.py` implements one aggregate `Crusher` per region, with a frozen
+crusher identity and `CrusherConfig`. It satisfies `Agent` structurally. Import
+`Crusher`, `CrusherConfig`, and `CrusherDecisionError` from `soybean_sim.agents`.
+
+The crusher reads all three global commodity prices and calculates USD per tonne
+of soybean input:
+
+```text
+gross_crush_spread = meal_yield * meal_price + oil_yield * oil_price - soybean_price
+net_crush_margin = gross_crush_spread - processing_cost
+```
+
+`monthly_capacity_tonnes` is a required positive finite input capacity;
+`processing_cost_usd_per_tonne` is required, finite, and nonnegative. The default
+`meal_yield_fraction=0.80` and `oil_yield_fraction=0.20` are a simplified modeling
+assumption with no losses or by-products. Yields must be finite, nonnegative,
+and sum to one within an absolute tolerance of `1e-9`.
+
+| Default net margin (USD/input tonne) | Capacity utilization |
+| --- | --- |
+| At most 0 | 0% |
+| Above 0 and below 30 | 30% |
+| From 30 to below 60 | 60% |
+| At least 60 | 100% |
+
+The three boundaries are configurable through `low_margin_threshold_usd_per_tonne`,
+`high_margin_threshold_usd_per_tonne`, and
+`full_utilization_threshold_usd_per_tonne`; they must be finite and strictly
+increasing. `low_utilization_fraction`, `medium_utilization_fraction`, and
+`high_utilization_fraction` must be finite, nondecreasing, and within [0, 1].
+
+Requested input tonnes are `min(monthly_capacity_tonnes * utilization, regional
+soybean inventory)`. Zero returns `()`; otherwise, one `CRUSH` decision identifies
+the crusher, snapshot month, soybeans, and requested input tonnes. Missing prices
+or regional soybean stocks raise `CrusherDecisionError`, even if processing would
+be zero. Arithmetic overflow producing a nonfinite margin also raises this error.
+
+For a snapshot containing all three prices and Brazilian soybean stock:
+
+```python
+from soybean_sim.agents import AgentIdentity, AgentType, Crusher, CrusherConfig
+from soybean_sim.models import Region
+
+crusher = Crusher(
+    identity=AgentIdentity(
+        agent_id="crusher-br-1", agent_type=AgentType.CRUSHER, region=Region.BRAZIL
+    ),
+    config=CrusherConfig(
+        monthly_capacity_tonnes=1000, processing_cost_usd_per_tonne=10
+    ),
+)
+decisions = crusher.decide(snapshot)
+```
+
+Regional stock is only an upper bound on a potential request, not exclusive
+crusher ownership or a reservation. A request executes no processing, deducts no
+soybeans, and creates no meal or oil stocks. Producer offers and Crusher requests
+are not automatically compatible. The initial assumption is one aggregate
+Crusher per region; allocation, settlement, and prevention of double-counting
+belong to future market execution. The heuristic uses global reference prices,
+not regional transaction prices.
 
 ## Planned simulation workflow
 
