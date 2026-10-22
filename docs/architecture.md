@@ -12,7 +12,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `models/` | Shared enums, market records, simulation inputs, and monthly observations |
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
-| `agents/` | Agent contracts, Producer offers, and margin-based Crusher requests |
+| `agents/` | Agent contracts and deterministic Producer, Crusher, and Trader intentions |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
@@ -199,8 +199,8 @@ Creating `proposal` executes nothing and changes neither stocks nor prices. The
 example uses the [baseline beginning-stocks assumption](assumptions.md#initial-inventory-reference);
 it does not reconstruct stocks at the selected price month. Identity and decision
 models live in `agents/models.py`; the protocol lives in `agents/base.py`.
-Trader rules, checks of returned identity/month against the calling
-agent, feasibility, market execution, and inventory updates remain future work.
+Checks of returned identity/month against the calling agent, feasibility, market
+execution, and inventory updates remain future work.
 
 ## Producer supply heuristic
 
@@ -316,6 +316,71 @@ are not automatically compatible. The initial assumption is one aggregate
 Crusher per region; allocation, settlement, and prevention of double-counting
 belong to future market execution. The heuristic uses global reference prices,
 not regional transaction prices.
+
+## Trader purchase and sale heuristics
+
+`agents/trader.py` implements an aggregate regional `Trader`. Import `Trader`,
+`TraderConfig`, and `TraderDecisionError` from `soybean_sim.agents`. The agent
+requires a trader-role identity and satisfies `Agent` structurally.
+
+Each market price is divided by its own configured reference price. The same
+ratio boundaries apply to soybean purchases and meal/oil sale offers, with
+opposite response directions:
+
+| Default market/reference ratio | Soybean purchase fraction | Product sale fraction |
+| --- | --- | --- |
+| Below 0.90 | 1.00 | 0.20 |
+| 0.90 to below 1.10 | 0.50 | 0.50 |
+| At least 1.10 | 0.20 | 0.80 |
+
+`TraderConfig` requires positive finite `reference_soybean_price_usd_per_tonne`,
+`reference_soybean_meal_price_usd_per_tonne`, and
+`reference_soybean_oil_price_usd_per_tonne`, plus a finite nonnegative
+`maximum_monthly_purchase_tonnes`. `low_price_ratio` and `high_price_ratio` are
+positive, finite, and strictly increasing. `low_purchase_fraction`,
+`normal_purchase_fraction`, and `high_purchase_fraction` must be nonincreasing;
+`low_sale_fraction`, `normal_sale_fraction`, and `high_sale_fraction` must be
+nondecreasing. All fractions are finite and within [0, 1]. These are modeling
+defaults rather than calibrated trading rules.
+
+Purchase tonnes equal the monthly purchase limit times the soybean purchase
+fraction; regional soybean stock does not limit this demand. Each product's sale
+tonnes equal its observed regional stock times the product sale fraction.
+Individual offers cannot exceed observed product stock. Zero quantities produce
+no decision. All three prices and both regional product inventories are required,
+including when capacity, fractions, or stocks are zero; missing observations raise
+`TraderDecisionError` with commodity, agent, month, and available region context.
+
+For a snapshot containing those observations:
+
+```python
+from soybean_sim.agents import AgentIdentity, AgentType, Trader, TraderConfig
+from soybean_sim.models import Region
+
+trader = Trader(
+    identity=AgentIdentity(
+        agent_id="trader-br-1", agent_type=AgentType.TRADER, region=Region.BRAZIL
+    ),
+    config=TraderConfig(
+        reference_soybean_price_usd_per_tonne=400,
+        reference_soybean_meal_price_usd_per_tonne=300,
+        reference_soybean_oil_price_usd_per_tonne=1000,
+        maximum_monthly_purchase_tonnes=1000,
+    ),
+)
+decisions = trader.decide(snapshot)
+```
+
+Results sort by commodity identifier and action identifier: meal sale, oil sale,
+then soybean purchase, omitting zero quantities. Decisions retain the trader
+identity and snapshot month. Repeated calls leave observations unchanged.
+
+The Trader submits intentions only. Regional product stocks are availability
+proxies, not exclusive ownership or reservations. Global reference prices are
+not regional transaction prices. No routes, counterparties, destinations,
+transport costs, budgets, or cross-border transfers are represented. Future
+market clearing must match intentions, allocate shared stocks, prevent
+double-counting across all agents, and perform settlement and inventory updates.
 
 ## Planned simulation workflow
 
