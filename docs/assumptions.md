@@ -1,7 +1,8 @@
 # Modeling assumptions
 
-These assumptions define the intended first model. Configuration and market input
-validation are implemented; economic behavior and the monthly engine are not.
+These assumptions define the intended first model. Input preparation and a
+price-responsive producer supply heuristic are implemented; market execution
+and the monthly engine are not.
 
 ## Initial scope
 
@@ -17,11 +18,16 @@ validation are implemented; economic behavior and the monthly engine are not.
 
 ## Planned economic behavior
 
-Producers will supply soybeans. Crushers will purchase soybeans and convert them
-into meal and oil. Traders will move commodities between regions in response to
-regional price differences, available supply, and transportation costs. Agent
-behavior will be simplified; the number of agents and their decision rules are
-not yet chosen.
+Producers currently offer a configurable share of existing regional soybean
+inventory in response to the global market/reference price ratio. Inventory is
+treated as available supply for the decision; no crop growth, harvesting, new
+production, or stock deduction occurs. See the
+[producer heuristic](architecture.md#producer-supply-heuristic) for its defaults.
+
+Crushers will purchase soybeans and convert them into meal and oil. Traders will
+move commodities between regions in response to regional price differences,
+available supply, and transportation costs. Their decision rules and the number
+of agents per region are not yet chosen.
 
 Supply and demand will influence prices, and processing profitability will inform
 crusher decisions. These are intended relationships, not implemented algorithms.
@@ -72,7 +78,7 @@ Validation accepts other names without checking a scenario registry.
 | --- | --- |
 | Price adjustment | Exact formula, supply and demand response, bounds, and treatment of unmet demand |
 | Crushing | Meal and oil yield coefficients, processing costs, capacity, losses, and treatment of by-products |
-| Agents | Number per region, decision rules, information available, expectations, and decision ordering |
+| Agents | Number per region, crusher/trader rules, producer response calibration, information available, expectations, and decision ordering |
 | Trade | Route capacity, transportation costs, lead times, feasibility, and trade outside the four regions |
 | Production timing | Seasonality, harvest months, and monthly allocation of annual quantities |
 | Scenarios | Drought severity, demand increases, transportation cost shocks, duration, and timing |
