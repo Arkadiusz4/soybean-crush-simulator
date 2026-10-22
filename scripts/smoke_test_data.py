@@ -1,3 +1,5 @@
+"""Smoke-test simulation input assembly using local USDA and World Bank datasets."""
+
 from datetime import date
 
 from soybean_sim.data import build_simulation_input
