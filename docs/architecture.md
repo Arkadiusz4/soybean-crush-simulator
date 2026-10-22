@@ -9,10 +9,10 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | Component | Responsibility |
 | --- | --- |
 | `__init__.py` | Read the installed package version |
-| `models/` | Shared enums and validated balances, prices, inventories, and simulation inputs |
+| `models/` | Shared enums, market records, simulation inputs, and monthly observations |
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
-| `agents/` | Producer, crusher, and trader decisions |
+| `agents/` | Agent identity, decision models, and the structural agent interface |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
@@ -143,6 +143,64 @@ All quantity fields end in `_tonnes` and use metric tons, never thousands of ton
 
 `marketing_year` preserves the source's nonempty string label, without inferring
 dates or a calendar-year boundary. JSON uses `YYYY-MM-01`.
+
+## Agent observations and decisions
+
+`MarketSnapshot`, exported from `soybean_sim.models` and defined in
+`models/snapshot.py`, describes what agents observe at the beginning of a step.
+It contains a first-of-month `date`, a nonempty tuple of existing `CommodityPrice`
+records, and a tuple of existing `Inventory` records. Non-first-day Python dates,
+strings, and datetimes are rejected rather than silently normalized. Prices must
+be unique by commodity and match the snapshot month; inventories must be unique
+by region and commodity. Empty inventories are allowed and do not imply zero
+stock. All records are frozen, and no annual balances are treated as monthly flows.
+Prices remain global references, not regional transaction prices.
+
+The public `soybean_sim.agents` API exposes:
+
+- `AgentIdentity`: a frozen `agent_id`, `agent_type`, and `region`. IDs are trimmed,
+  nonblank strings assigned by callers; uniqueness across agents will be a future
+  engine responsibility. `AgentType` identifies producers, crushers, and traders.
+- `AgentDecision`: a frozen agent identity, first-of-month `month`, typed `action`,
+  `commodity`, and finite nonnegative `quantity_tonnes`. `DecisionAction` provides
+  `OFFER_FOR_SALE`, `PURCHASE`, and `CRUSH`. Every action names a commodity; crushing
+  requires soybeans and measures input tonnes. Zero tonnes requests no operation.
+- `Agent`: a `Protocol` with a read-only `identity` property and
+  `decide(snapshot: MarketSnapshot) -> tuple[AgentDecision, ...]`. Implementations
+  need no inheritance and must leave observations unchanged. Returned decisions
+  must use that identity and the snapshot month; `()` means abstaining.
+
+For example, given a validated `initial` input from the
+[input builder](data-sources.md#building-simulation-inputs), a caller can describe
+an observation and an illustrative intention:
+
+```python
+from soybean_sim.agents import AgentDecision, AgentIdentity, AgentType, DecisionAction
+from soybean_sim.models import Commodity, MarketSnapshot, Region
+
+snapshot = MarketSnapshot(
+    month=initial.prices[0].month,
+    prices=initial.prices,
+    inventories=initial.inventories,
+)
+identity = AgentIdentity(
+    agent_id="producer-br-1", agent_type=AgentType.PRODUCER, region=Region.BRAZIL
+)
+proposal = AgentDecision(
+    agent=identity,
+    month=snapshot.month,
+    action=DecisionAction.OFFER_FOR_SALE,
+    commodity=Commodity.SOYBEANS,
+    quantity_tonnes=5,
+)
+```
+
+Creating `proposal` executes nothing and changes neither stocks nor prices. The
+example uses the [baseline beginning-stocks assumption](assumptions.md#initial-inventory-reference);
+it does not reconstruct stocks at the selected price month. Identity and decision
+models live in `agents/models.py`; the protocol lives in `agents/base.py`.
+Concrete role rules, checks of returned identity/month against the calling agent,
+feasibility, market execution, and inventory updates remain future work.
 
 ## Planned simulation workflow
 
