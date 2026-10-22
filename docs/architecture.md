@@ -12,7 +12,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `models/` | Shared enums, market records, simulation inputs, and monthly observations |
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
-| `agents/` | Agent identity, decision models, and the structural agent interface |
+| `agents/` | Agent contracts, decision models, and price-responsive Producer offers |
 | `market/` | Prices, inventories, processing flows, and trade |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
@@ -199,8 +199,59 @@ Creating `proposal` executes nothing and changes neither stocks nor prices. The
 example uses the [baseline beginning-stocks assumption](assumptions.md#initial-inventory-reference);
 it does not reconstruct stocks at the selected price month. Identity and decision
 models live in `agents/models.py`; the protocol lives in `agents/base.py`.
-Concrete role rules, checks of returned identity/month against the calling agent,
-feasibility, market execution, and inventory updates remain future work.
+Crusher and trader rules, checks of returned identity/month against the calling
+agent, feasibility, market execution, and inventory updates remain future work.
+
+## Producer supply heuristic
+
+`agents/producer.py` implements `Producer`, an aggregate soybean producer for one
+region. It satisfies `Agent` structurally and holds a frozen `AgentIdentity` with
+`agent_type=PRODUCER` and an explicit frozen `ProducerConfig`. A different role
+is rejected at construction. These types and `ProducerDecisionError` are exported
+from `soybean_sim.agents`.
+
+The producer divides the snapshot's global soybean price by the configured
+`reference_price_usd_per_tonne`, then offers a fraction of its own region's
+soybean stock:
+
+| Default price ratio | Supply fraction |
+| --- | --- |
+| Below 0.90 | 0.20 |
+| 0.90 to below 1.10 | 0.50 |
+| At least 1.10 | 0.80 |
+
+The reference price is required, positive, finite, and expressed in USD/tonne.
+`low_price_ratio` and `high_price_ratio` configure the band boundaries; both are
+finite and positive, with the high threshold strictly greater than the low one.
+`low_supply_fraction`, `normal_supply_fraction`, and `high_supply_fraction` are
+finite fractions in [0, 1], ordered from low to high without decreasing.
+These are configurable modeling defaults, not empirically calibrated responses.
+
+Using the producer identity and snapshot from the preceding example:
+
+```python
+from soybean_sim.agents import Producer, ProducerConfig
+
+producer = Producer(
+    identity=identity,
+    config=ProducerConfig(reference_price_usd_per_tonne=400),
+)
+decisions = producer.decide(snapshot)
+```
+
+Each nonempty result contains one `OFFER_FOR_SALE` decision for soybeans, carrying
+the producer's identity, the snapshot month, and the unrounded requested tonnes.
+Missing soybean prices or regional soybean stocks raise `ProducerDecisionError`
+with agent and month context; missing stock is never treated as zero. Known zero
+stock returns `()`. A configured zero fraction with positive stock produces a
+zero-tonne intention, consistent with the decision contract.
+
+Inventory is treated as available supply for this decision. The heuristic uses
+global reference prices and does not model regional transaction prices, crop
+growth, harvesting, new production, or annual-to-monthly allocation. Calling
+`decide()` is deterministic and does not reserve, subtract, or sell stock; repeated
+calls with the same snapshot propose the same offer. Future execution must own
+inventory changes and settlement.
 
 ## Planned simulation workflow
 
