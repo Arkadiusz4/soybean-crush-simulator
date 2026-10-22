@@ -9,12 +9,14 @@ from .market import (
     NonNegativeTonnes,
 )
 from .simulation import SimulationInput
+from .snapshot import MarketSnapshot
 
 __all__ = [
     "Commodity",
     "CommodityPrice",
     "Inventory",
     "MarketBalance",
+    "MarketSnapshot",
     "NonEmptyString",
     "NonNegativeTonnes",
     "Region",
