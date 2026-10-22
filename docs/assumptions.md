@@ -1,8 +1,8 @@
 # Modeling assumptions
 
-These assumptions define the intended first model. Input preparation, a
-price-responsive Producer, and a margin-based Crusher are implemented;
-market execution and the monthly engine are not.
+These assumptions define the intended first model. Input preparation and basic
+Producer, Crusher, and Trader decision heuristics are implemented; market
+execution and the monthly engine are not.
 
 ## Initial scope
 
@@ -32,12 +32,17 @@ Producer offers and Crusher requests may refer to the same stock. Allocation and
 prevention of double-counting require future execution logic. See the
 [crusher heuristic](architecture.md#crusher-processing-heuristic) for the formulas.
 
-Traders will move commodities between regions in response to regional price
-differences, available supply, and transportation costs. Trader rules and the
-number of producers and traders per region are not yet chosen.
+Traders currently request soybean purchases and offer regional meal and oil
+stocks based on global market/reference price ratios. Purchase requests represent
+demand independently of current soybean inventory. Product stocks are shared
+regional availability proxies, not owned or reserved trader stocks. No transfers,
+cross-border trade, routes, transport costs, counterparties, or budgets are modeled.
+Future market clearing must prevent double-counting across all agents. The number
+of producers and traders per region remains open. See the
+[trader heuristics](architecture.md#trader-purchase-and-sale-heuristics).
 
 Supply and demand will influence prices through rules that remain undecided.
-The current producer and crusher response parameters are modeling defaults;
+The current producer, crusher, and trader response parameters are modeling defaults;
 price formulas, elasticities, and empirical parameter calibration remain open.
 
 Historical quantities and reference prices will initialize the model. Prices will
@@ -85,7 +90,7 @@ Validation accepts other names without checking a scenario registry.
 | --- | --- |
 | Price adjustment | Exact formula, supply and demand response, bounds, and treatment of unmet demand |
 | Crushing | Calibration of yields, processing costs and capacity; losses and by-products beyond the simplified 80/20 split |
-| Agents | Producer/trader counts, trader rules, response calibration, information available, expectations, and decision ordering |
+| Agents | Producer/trader counts, response calibration, information available, expectations, and decision ordering |
 | Trade | Route capacity, transportation costs, lead times, feasibility, and trade outside the four regions |
 | Production timing | Seasonality, harvest months, and monthly allocation of annual quantities |
 | Scenarios | Drought severity, demand increases, transportation cost shocks, duration, and timing |

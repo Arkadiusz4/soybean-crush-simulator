@@ -28,11 +28,11 @@ Pydantic configuration and market input models, YAML validation, a Typer CLI,
 local USDA PSD CSV and World Bank monthly XLSX price loading, historical record
 selection with completeness validation, initial inventories from beginning stocks,
 validated simulation input assembly, immutable agent observations and decisions,
-an agent interface, a price-responsive Producer, a margin-based Crusher, tests,
-and CI.
+an agent interface, a price-responsive Producer and Trader, a margin-based Crusher,
+tests, and CI.
 
-Trader behavior, the simulation engine, market execution, scenario
-effects, results, and dashboard functionality are **not implemented**. Monthly
+The simulation engine, market execution, scenario effects, results, and dashboard
+functionality are **not implemented**. Monthly
 steps are a modeling decision for the future engine; the current configuration
 only validates a positive step count.
 
