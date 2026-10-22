@@ -1,8 +1,8 @@
 # Modeling assumptions
 
-These assumptions define the intended first model. Input preparation and a
-price-responsive producer supply heuristic are implemented; market execution
-and the monthly engine are not.
+These assumptions define the intended first model. Input preparation, a
+price-responsive Producer, and a margin-based Crusher are implemented;
+market execution and the monthly engine are not.
 
 ## Initial scope
 
@@ -24,14 +24,21 @@ treated as available supply for the decision; no crop growth, harvesting, new
 production, or stock deduction occurs. See the
 [producer heuristic](architecture.md#producer-supply-heuristic) for its defaults.
 
-Crushers will purchase soybeans and convert them into meal and oil. Traders will
-move commodities between regions in response to regional price differences,
-available supply, and transportation costs. Their decision rules and the number
-of agents per region are not yet chosen.
+One aggregate Crusher per region currently requests processing from net margin,
+configured monthly input capacity, and regional soybean stocks. The default
+80% meal / 20% oil yields are simplified assumptions with no losses or by-products.
+Regional stocks are a request ceiling, not owned or reserved crusher inventory;
+Producer offers and Crusher requests may refer to the same stock. Allocation and
+prevention of double-counting require future execution logic. See the
+[crusher heuristic](architecture.md#crusher-processing-heuristic) for the formulas.
 
-Supply and demand will influence prices, and processing profitability will inform
-crusher decisions. These are intended relationships, not implemented algorithms.
-No price formula, yield, elasticity, or cost coefficient is fixed yet.
+Traders will move commodities between regions in response to regional price
+differences, available supply, and transportation costs. Trader rules and the
+number of producers and traders per region are not yet chosen.
+
+Supply and demand will influence prices through rules that remain undecided.
+The current producer and crusher response parameters are modeling defaults;
+price formulas, elasticities, and empirical parameter calibration remain open.
 
 Historical quantities and reference prices will initialize the model. Prices will
 then evolve through model rules and scenario effects, rather than replaying or
@@ -77,8 +84,8 @@ Validation accepts other names without checking a scenario registry.
 | Topic | Decisions still required |
 | --- | --- |
 | Price adjustment | Exact formula, supply and demand response, bounds, and treatment of unmet demand |
-| Crushing | Meal and oil yield coefficients, processing costs, capacity, losses, and treatment of by-products |
-| Agents | Number per region, crusher/trader rules, producer response calibration, information available, expectations, and decision ordering |
+| Crushing | Calibration of yields, processing costs and capacity; losses and by-products beyond the simplified 80/20 split |
+| Agents | Producer/trader counts, trader rules, response calibration, information available, expectations, and decision ordering |
 | Trade | Route capacity, transportation costs, lead times, feasibility, and trade outside the four regions |
 | Production timing | Seasonality, harvest months, and monthly allocation of annual quantities |
 | Scenarios | Drought severity, demand increases, transportation cost shocks, duration, and timing |
