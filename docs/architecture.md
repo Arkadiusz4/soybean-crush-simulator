@@ -14,7 +14,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `cli.py` | Version display, configuration validation, and terminal errors |
 | `agents/` | Agent contracts and deterministic Producer, Crusher, and Trader intentions |
 | `market/` | Immutable market state, physical crushing settlement, and deferred trade results |
-| `simulation/` | Monthly run loop, random generator, and scenario effects |
+| `simulation/` | Deterministic monthly orchestration, calendar advancement, and frozen histories |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
 
 Root `configs/` contains a baseline YAML example. Root `data/` is for local datasets
@@ -200,7 +200,8 @@ example uses the [baseline beginning-stocks assumption](assumptions.md#initial-i
 it does not reconstruct stocks at the selected price month. Identity and decision
 models live in `agents/models.py`; the protocol lives in `agents/base.py`.
 Settlement checks the market month and identity consistency across decisions.
-Matching identities to registered agents and trade execution remain future work.
+The engine checks each returned identity against its registered agent. Trade
+execution remains future work.
 
 ## Producer supply heuristic
 
@@ -400,40 +401,35 @@ no agent ownership or real Producer-to-Crusher transaction.
 See [market settlement](settlement.md) for the API, allocation and validation
 rules, numerical tolerances, limitations, and a complete synthetic example.
 
-## Planned simulation workflow
+## Monthly simulation workflow
 
-The engine will combine producer, crusher, and trader agents with regional market
-state. Each step will represent one month. The configured step count is already
-validated, but no scheduling or calendar behavior exists yet.
+`simulation/engine.py` exposes `run_simulation()`. It validates the initial state,
+duration, regional agent identities, unique IDs, and required crusher configs.
+Each month, agents observe one shared starting snapshot in ascending ID order;
+the engine collects their decisions and calls settlement once. Ending inventories
+carry into the next calendar month. Price values and sources stay constant while
+price dates advance. The final state belongs to the last completed month.
 
-A tentative workflow is:
-
-1. Load and validate configuration and prepared historical inputs.
-2. Initialize regional state and a random generator from the configured seed.
-3. For each month, apply scenario effects, collect agent decisions, reconcile
-   feasible production, processing, and trade, then update prices and inventories.
-4. Record monthly results for analysis and future visualization.
-
-The ordering within a month and the economic rules remain open. The following
-flow beyond configuration validation is planned:
+`simulation/calendar.py` handles calendar boundaries and constant-price dating.
+`simulation/models.py` defines frozen `MonthlyResult` and `SimulationResult`,
+validating monthly records and connected histories. Empty agent collections are
+valid. Agent and settlement errors propagate; no randomness is introduced.
 
 ```mermaid
 flowchart LR
-    Sources[Historical exports] --> Data[Load and validate data]
-    Config[Validated configuration] --> Engine[Monthly simulation engine]
-    Data --> Engine
-    Engine --> Agents[Agent decisions]
-    Agents --> Market[Market and inventory updates]
-    Market --> Engine
-    Engine --> Results[Monthly results]
-    Results --> View[Analysis and future dashboard]
+    Data[Prepared SimulationInput] --> State[MarketSnapshot and MarketState]
+    State --> Agents[Agents observe starting snapshot]
+    Agents --> Settlement[One settlement batch]
+    Settlement --> History[Monthly result]
+    Settlement --> Next[Carry ending stocks and redate prices]
+    Next --> Agents
 ```
 
-Data ingestion will provide prepared inputs rather than performing downloads
-inside agent decisions. The engine will own run state and compose agents and
-market logic, avoiding global mutable state. CLI and future Streamlit code will
-call the same Python interfaces; simulation logic will not render UI elements or
-read terminal arguments.
+The engine composes existing agent and settlement APIs without changing their
+rules. Historical loading, annual flow allocation, trading execution, dynamic
+pricing, and scenario effects remain separate. The CLI is unchanged.
+See the [monthly engine documentation](simulation.md) for initialization from
+`SimulationInput`, result fields, assumptions, and a runnable example.
 
 ## Python API
 
@@ -452,10 +448,11 @@ print(config.regions)
 or raises `ConfigurationError`. `Region` and `Commodity` expose the supported
 string identifiers. The package also exposes `soybean_sim.__version__`.
 
-The planned simulation API will accept validated configuration and prepared data,
-run the monthly model, and return results without depending on the CLI or UI.
-Function names, state types, and the results representation are not decided.
-There is no callable simulation API yet.
+`soybean_sim.simulation` exports `run_simulation`, `next_month`, `MonthlyResult`,
+`SimulationResult`, and `SimulationError`. Execution takes an initial `MarketState`,
+agents, explicit crusher configurations, and a positive `months` count. Existing
+configuration files are not automatically wired to execution; callers may pass
+`config.duration_steps` as `months`. No seed is required by the deterministic engine.
 
 See [assumptions](assumptions.md) for economic decisions and
 [data sources](data-sources.md) for input preparation.
