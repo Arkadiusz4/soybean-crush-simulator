@@ -1,8 +1,8 @@
 # Modeling assumptions
 
 These assumptions define the intended first model. Input preparation and basic
-Producer, Crusher, and Trader decision heuristics are implemented; market
-execution and the monthly engine are not.
+Producer, Crusher, and Trader heuristics plus physical crushing settlement are
+implemented; trade execution and the monthly engine are not.
 
 ## Initial scope
 
@@ -28,8 +28,11 @@ One aggregate Crusher per region currently requests processing from net margin,
 configured monthly input capacity, and regional soybean stocks. The default
 80% meal / 20% oil yields are simplified assumptions with no losses or by-products.
 Regional stocks are a request ceiling, not owned or reserved crusher inventory;
-Producer offers and Crusher requests may refer to the same stock. Allocation and
-prevention of double-counting require future execution logic. See the
+Producer offers and Crusher requests may refer to the same stock. Settlement
+allocates CRUSH requests by agent ID against remaining regional stocks and applies
+configured yields, trusting agent capacity decisions. This is direct physical
+processing, not a real trade from Producer to Crusher. Trade matching and ownership
+remain future work. See [physical settlement](settlement.md) and the
 [crusher heuristic](architecture.md#crusher-processing-heuristic) for the formulas.
 
 Traders currently request soybean purchases and offer regional meal and oil
@@ -52,10 +55,11 @@ allocated to months using a simplified rule that preserves their annual totals.
 The allocation rule and seasonality remain open; stock measurements require
 separate treatment. See [data sources](data-sources.md).
 
-Mass balance, nonnegative feasible inventories, and capacity limits are intended
-future invariants. Input models already reject negative or nonfinite quantities,
-but no market engine enforces state transitions yet. Raw historical balances are
-not required to satisfy an exact accounting equation.
+Physical settlement enforces nonnegative finite stocks and consumes each soybean
+tonne at most once within a batch. Meal and oil output follow the configured
+yields and their numerical tolerance. Agent-owned inventory, trade accounting,
+monthly scheduling, and capacity guarantees across repeated batches remain open.
+Raw historical balances are not required to satisfy an exact accounting equation.
 
 ## Initial inventory reference
 

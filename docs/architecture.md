@@ -13,7 +13,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `config.py` | Immutable run settings and safe YAML loading |
 | `cli.py` | Version display, configuration validation, and terminal errors |
 | `agents/` | Agent contracts and deterministic Producer, Crusher, and Trader intentions |
-| `market/` | Prices, inventories, processing flows, and trade |
+| `market/` | Immutable market state, physical crushing settlement, and deferred trade results |
 | `simulation/` | Monthly run loop, random generator, and scenario effects |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
 
@@ -199,8 +199,8 @@ Creating `proposal` executes nothing and changes neither stocks nor prices. The
 example uses the [baseline beginning-stocks assumption](assumptions.md#initial-inventory-reference);
 it does not reconstruct stocks at the selected price month. Identity and decision
 models live in `agents/models.py`; the protocol lives in `agents/base.py`.
-Checks of returned identity/month against the calling agent, feasibility, market
-execution, and inventory updates remain future work.
+Settlement checks the market month and identity consistency across decisions.
+Matching identities to registered agents and trade execution remain future work.
 
 ## Producer supply heuristic
 
@@ -313,9 +313,10 @@ Regional stock is only an upper bound on a potential request, not exclusive
 crusher ownership or a reservation. A request executes no processing, deducts no
 soybeans, and creates no meal or oil stocks. Producer offers and Crusher requests
 are not automatically compatible. The initial assumption is one aggregate
-Crusher per region; allocation, settlement, and prevention of double-counting
-belong to future market execution. The heuristic uses global reference prices,
-not regional transaction prices.
+Crusher per region. The settlement layer can allocate several crusher requests
+sequentially against regional stocks; actual purchases and cross-agent trade
+matching remain future work. The heuristic uses global reference prices, not
+regional transaction prices.
 
 ## Trader purchase and sale heuristics
 
@@ -381,6 +382,23 @@ not regional transaction prices. No routes, counterparties, destinations,
 transport costs, budgets, or cross-border transfers are represented. Future
 market clearing must match intentions, allocate shared stocks, prevent
 double-counting across all agents, and perform settlement and inventory updates.
+
+## Market state and physical settlement
+
+`market/models.py` defines frozen `MarketState` and `SettlementResult` models plus
+`SettlementOutcome`. State contains one `MarketSnapshot`; results distinguish
+requested tonnes from executed and unfulfilled tonnes. `market/settlement.py`
+provides `settle_decisions()` and `SettlementError`, exported through
+`soybean_sim.market`.
+
+Settlement validates a batch, allocates CRUSH requests in ascending agent-ID
+order, consumes available regional soybeans, and adds configured meal/oil output
+to a new state. It trusts agent capacity decisions. Purchase and sale intentions
+remain wholly unexecuted because matching is not implemented. Shared stocks imply
+no agent ownership or real Producer-to-Crusher transaction.
+
+See [market settlement](settlement.md) for the API, allocation and validation
+rules, numerical tolerances, limitations, and a complete synthetic example.
 
 ## Planned simulation workflow
 
