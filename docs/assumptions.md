@@ -1,8 +1,8 @@
 # Modeling assumptions
 
 These assumptions define the intended first model. Input preparation and basic
-Producer, Crusher, and Trader heuristics plus physical crushing settlement are
-implemented; trade execution and the monthly engine are not.
+Producer, Crusher, and Trader heuristics, physical crushing settlement, and a
+deterministic monthly engine are implemented; trade execution is not.
 
 ## Initial scope
 
@@ -10,9 +10,10 @@ implemented; trade execution and the monthly engine are not.
   allows any nonempty subset of these four regions. The treatment of trade with
   regions outside the model is still open.
 - **Commodities:** soybeans, soybean meal, and soybean oil.
-- **Time:** one simulation step will represent one calendar month. The current
-  `duration_steps` field validates the number of steps; it does not execute time
-  progression or assign a start date.
+- **Time:** one engine step represents one calendar month, identified by its first
+  day. The initial state supplies the starting month. The engine's `months` argument
+  is explicit; `duration_steps` remains a validated configuration value that callers
+  can pass to it.
 - **Purpose:** compare simplified disruption scenarios, rather than provide
   accurate market or price forecasts.
 
@@ -48,17 +49,19 @@ Supply and demand will influence prices through rules that remain undecided.
 The current producer, crusher, and trader response parameters are modeling defaults;
 price formulas, elasticities, and empirical parameter calibration remain open.
 
-Historical quantities and reference prices will initialize the model. Prices will
-then evolve through model rules and scenario effects, rather than replaying or
-forecasting the source price series. Annual or marketing-year flows will be
-allocated to months using a simplified rule that preserves their annual totals.
-The allocation rule and seasonality remain open; stock measurements require
-separate treatment. See [data sources](data-sources.md).
+Historical quantities and reference prices initialize the baseline. The current
+engine holds price values and source labels constant while updating observation
+dates to each simulation month. Dynamic price adjustment remains planned. No
+annual or marketing-year flows are allocated to months, so new production, imports,
+and consumption flows do not replenish or deplete inventories. The allocation rule
+and seasonality remain open; stock measurements require separate treatment.
+See [data sources](data-sources.md) and [the engine assumptions](simulation.md#current-assumptions-and-limitations).
 
 Physical settlement enforces nonnegative finite stocks and consumes each soybean
 tonne at most once within a batch. Meal and oil output follow the configured
 yields and their numerical tolerance. Agent-owned inventory, trade accounting,
-monthly scheduling, and capacity guarantees across repeated batches remain open.
+and capacity guarantees across independently repeated batches remain open.
+The engine settles once per month and carries ending stocks into the next month.
 Raw historical balances are not required to satisfy an exact accounting equation.
 
 ## Initial inventory reference
@@ -84,8 +87,8 @@ assumption, not a historical reconstruction of a specific calendar date.
 nonempty label. All four fields are required, extra fields are rejected, and
 validated settings are immutable.
 
-The seed is only stored and validated today; simulation reproducibility is not
-implemented. Likewise, `baseline` is an example label, not an implemented scenario.
+The seed is only stored and validated; the deterministic engine uses no randomness.
+Likewise, `baseline` is an example label, not an implemented scenario.
 Validation accepts other names without checking a scenario registry.
 
 ## Open Design Decisions

@@ -29,12 +29,12 @@ local USDA PSD CSV and World Bank monthly XLSX price loading, historical record
 selection with completeness validation, initial inventories from beginning stocks,
 validated simulation input assembly, immutable agent observations and decisions,
 an agent interface, a price-responsive Producer and Trader, a margin-based Crusher,
-immutable market state, physical crushing settlement, tests, and CI.
+immutable market state, physical crushing settlement, a deterministic monthly
+engine with frozen reference prices, tests, and CI.
 
-The simulation engine, trade matching and execution, scenario effects, results,
-and dashboard functionality are **not implemented**. Monthly
-steps are a modeling decision for the future engine; the current configuration
-only validates a positive step count.
+Trade matching and execution, dynamic pricing, new production, scenario effects,
+and dashboard functionality are **not implemented**. The engine is a Python API;
+the configuration CLI does not start simulation runs.
 
 ## Technology stack
 
@@ -75,7 +75,7 @@ This extra does not provide a dashboard application yet.
 
 ## Usage
 
-Only package information and configuration validation are available:
+The CLI provides package information and configuration validation:
 
 ```bash
 uv run soybean-sim --help
@@ -93,6 +93,9 @@ are labels; validation does not establish that a scenario exists.
 Validation exits with status 0 on success, or prints a file, YAML, or field error
 to stderr and exits with status 1. Incorrect CLI usage exits with status 2.
 No command runs a simulation.
+
+Use the [monthly engine Python API](docs/simulation.md) to run prepared market
+states with agents and inspect monthly decisions, settlement, and ending stocks.
 
 ## Development
 
@@ -141,6 +144,7 @@ and rerun `just install` and `just check` after updating dependencies.
 
 - [Architecture and Python API](docs/architecture.md)
 - [Market state and physical settlement](docs/settlement.md)
+- [Monthly simulation engine and runnable example](docs/simulation.md)
 - [Historical data sources and processing](docs/data-sources.md)
 - [Modeling assumptions and open decisions](docs/assumptions.md)
 - [Contributing and development workflow](CONTRIBUTING.md)
