@@ -136,9 +136,11 @@ unfulfilled tonnes. The initial state still has its original stocks.
 Processing directly against shared regional stocks is a temporary modeling
 simplification, not ownership, a reservation, or a real purchase from producers.
 Sequential execution prevents crushers consuming the same soybean tonnes within
-one batch, but batch replay prevention, month advancement, trade matching, and
-allocation across actual transactions require the future engine. Callers must
-carry the returned state forward. Global reference prices are unchanged; no
+one batch. The [monthly engine](simulation.md) carries returned stocks forward
+and advances the calendar, while direct settlement callers remain responsible
+for carrying their returned state. Batch replay prevention, trade matching, and
+allocation across actual transactions remain future work. Global reference prices
+are unchanged; no
 regional transaction prices, counterparties, budgets, routes, or shipments exist.
 
 When initializing from historical inputs, the existing
