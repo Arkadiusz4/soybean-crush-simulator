@@ -29,10 +29,10 @@ local USDA PSD CSV and World Bank monthly XLSX price loading, historical record
 selection with completeness validation, initial inventories from beginning stocks,
 validated simulation input assembly, immutable agent observations and decisions,
 an agent interface, a price-responsive Producer and Trader, a margin-based Crusher,
-tests, and CI.
+immutable market state, physical crushing settlement, tests, and CI.
 
-The simulation engine, market execution, scenario effects, results, and dashboard
-functionality are **not implemented**. Monthly
+The simulation engine, trade matching and execution, scenario effects, results,
+and dashboard functionality are **not implemented**. Monthly
 steps are a modeling decision for the future engine; the current configuration
 only validates a positive step count.
 
@@ -140,6 +140,7 @@ and rerun `just install` and `just check` after updating dependencies.
 ## Further documentation
 
 - [Architecture and Python API](docs/architecture.md)
+- [Market state and physical settlement](docs/settlement.md)
 - [Historical data sources and processing](docs/data-sources.md)
 - [Modeling assumptions and open decisions](docs/assumptions.md)
 - [Contributing and development workflow](CONTRIBUTING.md)
