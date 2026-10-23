@@ -1,4 +1,5 @@
-"""
+"""Run a simple smoke test of the simulation.
+
 Run with ``uv run python scripts/smoke_test_simulation.py`` from the repository.
 Capacities and costs are illustrative settings, not estimates from historical data.
 USDA beginning stocks are used without adjusting them to the calendar price month.
