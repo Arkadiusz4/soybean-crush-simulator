@@ -11,6 +11,8 @@ from soybean_sim.market import (
     RegionalPrice,
     TradeExecution,
     contracts,
+    pressure,
+    trade,
 )
 from soybean_sim.models import Commodity, Region
 
@@ -251,3 +253,15 @@ def test_market_package_exports_contracts(name: str) -> None:
     """Expose stable contract classes alongside the existing market APIs."""
     assert getattr(market, name) is getattr(contracts, name)
     assert name in market.__all__
+
+
+@pytest.mark.parametrize(
+    ("public_model", "implementation"),
+    [(MarketPressure, pressure.MarketPressure), (TradeExecution, trade.TradeExecution)],
+)
+def test_extracted_contracts_preserve_existing_imports(
+    public_model: type[BaseModel], implementation: type[BaseModel]
+) -> None:
+    """Keep both existing import paths identical to the extracted model classes."""
+    assert public_model is implementation
+    assert getattr(contracts, public_model.__name__) is implementation
