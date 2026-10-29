@@ -9,6 +9,7 @@ from .contracts import (
 )
 from .models import MarketState, SettlementOutcome, SettlementResult
 from .settlement import SettlementError, settle_decisions
+from .trading import TradeMatchingError, match_interregional_trades
 
 __all__ = [
     "MarketFlow",
@@ -20,5 +21,7 @@ __all__ = [
     "SettlementOutcome",
     "SettlementResult",
     "TradeExecution",
+    "TradeMatchingError",
+    "match_interregional_trades",
     "settle_decisions",
 ]
