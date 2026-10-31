@@ -25,7 +25,7 @@ __all__ = [
     "SettlementResult",
     "TradeExecution",
     "TradeMatchingError",
-    "match_interregional_trades",
     "generate_monthly_flows",
+    "match_interregional_trades",
     "settle_decisions",
 ]

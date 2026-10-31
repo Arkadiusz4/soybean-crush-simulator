@@ -24,13 +24,10 @@ def match_interregional_trades(
     *,
     month: date,
 ) -> tuple[TradeExecution, ...]:
-    """Match offers and purchases without changing decisions or inventories.
+    """Match interregional trades without mutating inputs.
 
-    Process commodities in order, then sellers and buyers by region and agent ID.
-    This greedy priority is a simulation convention, not economic optimization.
-    Sellers share their region's starting stock; missing stock is unavailable.
-    Purchases do not replenish sellable stock within this batch. Valid CRUSH
-    decisions are ignored after validation, and zero-quantity matches are omitted.
+    Prioritize commodity, then seller/buyer region and ID. Sellers share starting
+    stock; purchases do not replenish it. Skip CRUSH and zero-quantity matches.
     """
     if type(month) is not date or month.day != 1:
         raise TradeMatchingError("month must be a date on the first day of a month")
