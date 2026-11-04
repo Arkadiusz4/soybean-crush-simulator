@@ -11,6 +11,7 @@ from .flows import MarketFlowError, MonthlyFlowConfig, generate_monthly_flows
 from .models import MarketState, SettlementOutcome, SettlementResult
 from .pricing import PriceDynamicsConfig, PriceDynamicsError, update_regional_prices
 from .settlement import SettlementError, settle_decisions
+from .trade_settlement import TradeSettlementError, settle_matched_trades
 from .trading import TradeMatchingError, match_interregional_trades
 
 __all__ = [
@@ -28,8 +29,10 @@ __all__ = [
     "SettlementResult",
     "TradeExecution",
     "TradeMatchingError",
+    "TradeSettlementError",
     "generate_monthly_flows",
     "match_interregional_trades",
     "settle_decisions",
+    "settle_matched_trades",
     "update_regional_prices",
 ]
