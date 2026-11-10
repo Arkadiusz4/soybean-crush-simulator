@@ -18,7 +18,11 @@ app = typer.Typer(
 
 @app.command()
 def version() -> None:
-    """Print the installed package version to standard output."""
+    """Print the installed package version to standard output.
+
+    Returns:
+        None: No value is returned.
+    """
     typer.echo(__version__)
 
 
@@ -26,7 +30,14 @@ def version() -> None:
 def validate_config(
     path: Annotated[Path, typer.Argument(help="Path to a UTF-8 YAML configuration.")],
 ) -> None:
-    """Validate a local YAML file and print confirmation on success."""
+    """Validate a local YAML file and print confirmation on success.
+
+    Args:
+        path (Path): Path to a local UTF-8 YAML configuration file.
+
+    Returns:
+        None: No value is returned.
+    """
     try:
         load_config(path)
     except ConfigurationError as exc:

@@ -36,6 +36,19 @@ def load_world_bank_prices(
     empty selection or no matching observations returns an empty tuple. Blanks
     and ellipsis markers are skipped. Equivalent duplicates count once, while
     conflicting observations are invalid. No conversion or interpolation occurs.
+
+    Args:
+        path (str | Path): Path to a local World Bank monthly Pink Sheet XLSX workbook.
+        start_month (date | None): Inclusive first-of-month lower bound, or None for no
+            lower restriction.
+        end_month (date | None): Inclusive first-of-month upper bound, or None for no
+            upper restriction.
+        commodities (Iterable[Commodity] | None): Commodities to retain; None selects
+            all and an empty iterable selects none.
+
+    Returns:
+        tuple[CommodityPrice, ...]: Global USD-per-tonne prices sorted by month and
+            commodity; an empty tuple when no observations match.
     """
     parsing.validate_month_range(start_month, end_month)
     selected_commodities = (
@@ -54,7 +67,14 @@ def load_world_bank_prices(
 
 @contextmanager
 def _open_workbook(workbook_path: Path) -> Iterator[Workbook]:
-    """Manage workbook resources and translate file/read failures during ingestion."""
+    """Manage workbook resources and translate file/read failures during ingestion.
+
+    Args:
+        workbook_path (Path): Path to the local Pink Sheet XLSX workbook.
+
+    Yields:
+        Workbook: Workbook opened for ingestion and closed when the context exits.
+    """
     try:
         with workbook_path.open("rb") as stream:
             workbook = load_workbook(stream, data_only=False, keep_links=False)
@@ -78,7 +98,15 @@ def _open_workbook(workbook_path: Path) -> Iterator[Workbook]:
 
 
 def _price_sheet(workbook: Workbook, path: Path) -> Worksheet:
-    """Locate the monthly data sheet and check the minimum header layout."""
+    """Locate the monthly data sheet and check the minimum header layout.
+
+    Args:
+        workbook (Workbook): Opened Pink Sheet workbook.
+        path (Path): Source path included in worksheet errors.
+
+    Returns:
+        Worksheet: Monthly data worksheet with the required header and unit rows.
+    """
     if mappings.SHEET_NAME not in workbook.sheetnames:
         raise WorldBankDataError(f"{path}: missing worksheet {mappings.SHEET_NAME!r}")
 
@@ -92,7 +120,16 @@ def _price_sheet(workbook: Workbook, path: Path) -> Worksheet:
 
 
 def _series_columns(worksheet: Worksheet, context: str) -> dict[Commodity, int]:
-    """Find all three series by name and validate units before filtering."""
+    """Find all three series by name and validate units before filtering.
+
+    Args:
+        worksheet (Worksheet): Monthly data worksheet to inspect.
+        context (str): Workbook and worksheet label used in schema errors.
+
+    Returns:
+        dict[Commodity, int]: Required commodities mapped to zero-based row-cell
+            indices.
+    """
     columns = {}
     for column_number, header in _iter_series_headers(worksheet):
         commodity = mappings.SERIES[header]
@@ -111,7 +148,15 @@ def _series_columns(worksheet: Worksheet, context: str) -> dict[Commodity, int]:
 
 
 def _iter_series_headers(worksheet: Worksheet) -> Iterator[tuple[int, str]]:
-    """Yield column numbers and trimmed names for supported commodity headers."""
+    """Yield column numbers and trimmed names for supported commodity headers.
+
+    Args:
+        worksheet (Worksheet): Monthly data worksheet whose header row is inspected.
+
+    Yields:
+        tuple[int, str]: One-based column number and trimmed supported series name for
+            each matching header.
+    """
     for column_number, cell in enumerate(worksheet[mappings.HEADER_ROW], start=1):
         if not isinstance(cell.value, str):
             continue
@@ -122,7 +167,16 @@ def _iter_series_headers(worksheet: Worksheet) -> Iterator[tuple[int, str]]:
 
 
 def _check_required_series(columns: Mapping[Commodity, int], context: str) -> None:
-    """Check that the discovered columns cover every required commodity series."""
+    """Check that the discovered columns cover every required commodity series.
+
+    Args:
+        columns (Mapping[Commodity, int]): Discovered commodity series and their column
+            indices.
+        context (str): Workbook and worksheet label used in missing-series errors.
+
+    Returns:
+        None: No value is returned.
+    """
     missing = set(mappings.SERIES.values()) - columns.keys()
     if missing:
         raise WorldBankDataError(
@@ -132,7 +186,16 @@ def _check_required_series(columns: Mapping[Commodity, int], context: str) -> No
 
 
 def _validate_price_unit(source_unit: object, series_name: str, context: str) -> None:
-    """Check a named series uses the verified USD-per-tonne unit label."""
+    """Check a named series uses the verified USD-per-tonne unit label.
+
+    Args:
+        source_unit (object): Raw workbook cell containing the series unit.
+        series_name (str): Supported series name included in unit errors.
+        context (str): Workbook and worksheet label used in unit errors.
+
+    Returns:
+        None: No value is returned.
+    """
     if not isinstance(source_unit, str) or source_unit.strip() != mappings.PRICE_UNIT:
         raise WorldBankDataError(
             f"{context}: row {mappings.UNIT_ROW}, {series_name}: "
@@ -147,7 +210,22 @@ def _read_prices(
     end_month: date | None,
     selected_commodities: set[Commodity],
 ) -> tuple[CommodityPrice, ...]:
-    """Orchestrate schema validation, row selection, collection, and model creation."""
+    """Orchestrate schema validation, row selection, collection, and model creation.
+
+    Args:
+        worksheet (Worksheet): Monthly data worksheet to ingest.
+        path (Path): Source workbook path used in observation context.
+        start_month (date | None): Inclusive lower month bound, or None for no lower
+            restriction.
+        end_month (date | None): Inclusive upper month bound, or None for no upper
+            restriction.
+        selected_commodities (set[Commodity]): Commodities whose prices should be
+            collected.
+
+    Returns:
+        tuple[CommodityPrice, ...]: Validated global prices sorted by month and
+            commodity.
+    """
     context = f"{path}: worksheet {mappings.SHEET_NAME!r}"
     columns = _series_columns(worksheet, context)
     selected_columns = {
@@ -166,7 +244,17 @@ def _selected_rows(
     month_bounds: tuple[date | None, date | None],
     context: str,
 ) -> Iterator[_SelectedRow]:
-    """Yield month, cells, and context after blank-row checks and month selection."""
+    """Yield month, cells, and context after blank-row checks and month selection.
+
+    Args:
+        worksheet (Worksheet): Monthly data worksheet containing source rows.
+        month_bounds (tuple[date | None, date | None]): Inclusive lower and upper month
+            bounds, each optionally None.
+        context (str): Workbook and worksheet label used in row errors.
+
+    Yields:
+        _SelectedRow: Selected month, raw row cells, and row-specific error context.
+    """
     start_month, end_month = month_bounds
     for row_number, row in enumerate(
         worksheet.iter_rows(min_row=mappings.FIRST_DATA_ROW, values_only=True),
@@ -191,7 +279,18 @@ def _selected_rows(
 def _collect_observations(
     rows: Iterable[_SelectedRow], columns: dict[Commodity, int]
 ) -> _Observations:
-    """Parse selected series, skip missing cells, and enforce duplicate consistency."""
+    """Parse selected series, skip missing cells, and enforce duplicate consistency.
+
+    Args:
+        rows (Iterable[_SelectedRow]): Selected months, raw cells, and row-specific
+            error contexts.
+        columns (dict[Commodity, int]): Selected commodities mapped to zero-based
+            row-cell indices.
+
+    Returns:
+        _Observations: Parsed prices indexed by month and commodity, with equal
+            duplicates collapsed.
+    """
     observations: _Observations = {}
     for month, row, row_context in rows:
         for commodity, column in columns.items():
@@ -206,7 +305,16 @@ def _collect_observations(
 
 
 def _build_prices(observations: _Observations) -> tuple[CommodityPrice, ...]:
-    """Construct immutable price models sorted by month and commodity identifier."""
+    """Construct immutable price models sorted by month and commodity identifier.
+
+    Args:
+        observations (_Observations): Validated decimal and float prices indexed by
+            month and commodity.
+
+    Returns:
+        tuple[CommodityPrice, ...]: Immutable global reference-price models sorted by
+            month and commodity.
+    """
     return tuple(
         CommodityPrice(
             month=month,
@@ -224,7 +332,17 @@ def _record_price(
     price: parsing.ParsedPrice,
     context: str,
 ) -> None:
-    """Retain equivalent duplicates once, comparing decimals before float conversion."""
+    """Retain equivalent duplicates once, comparing decimals before float conversion.
+
+    Args:
+        observations (_Observations): Parsed prices updated in place.
+        key (_PriceKey): Month and commodity identifying the observation.
+        price (parsing.ParsedPrice): Exact source price and finite float representation.
+        context (str): Observation label used in duplicate-conflict errors.
+
+    Returns:
+        None: No value is returned.
+    """
     previous = observations.get(key)
     if previous is not None and previous.source_value != price.source_value:
         raise WorldBankDataError(f"{context}: conflicting duplicate price")

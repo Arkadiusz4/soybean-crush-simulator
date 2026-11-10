@@ -38,6 +38,20 @@ def run_simulation(
     Agents observe one shared starting snapshot in ascending ID order. Empty
     registrations are valid. The final state belongs to the last completed month;
     agent and settlement errors propagate without returning a partial history.
+
+    Args:
+        initial_state (MarketState): Market observations and inventories at the start of
+            the first month.
+        agents (Iterable[Agent]): Agents with unique IDs and stable identities in
+            represented regions.
+        crusher_configs (Mapping[str, CrusherConfig]): Validated processing settings
+            keyed by every registered crusher's ID.
+        months (int): Positive number of monthly steps within the supported calendar
+            range.
+
+    Returns:
+        SimulationResult: Initial state, complete monthly history, and the last
+            completed month's ending state.
     """
     initial = MarketState.from_snapshot(initial_state.snapshot)
     _validate_duration(initial.snapshot.month, months)
@@ -72,7 +86,15 @@ def run_simulation(
 
 
 def _validate_duration(first_month: date, months: int) -> None:
-    """Require a positive integer duration that fits Python's supported calendar."""
+    """Require a positive integer duration that fits Python's supported calendar.
+
+    Args:
+        first_month (date): First calendar day of the simulation's initial month.
+        months (int): Requested positive integer number of monthly steps.
+
+    Returns:
+        None: No value is returned.
+    """
     if type(months) is not int or months <= 0:
         raise SimulationError("months must be a positive integer")
 
@@ -94,7 +116,19 @@ def _prepare_agents(
     agents: Iterable[Agent],
     crusher_configs: Mapping[str, CrusherConfig],
 ) -> tuple[tuple[_RegisteredAgent, ...], dict[str, CrusherConfig]]:
-    """Validate registrations and consistent decision and settlement configurations."""
+    """Validate registrations and consistent decision and settlement configurations.
+
+    Args:
+        initial_state (MarketState): Validated initial state defining represented
+            regions.
+        agents (Iterable[Agent]): Agents to register with unique IDs.
+        crusher_configs (Mapping[str, CrusherConfig]): Processing settings keyed by
+            crusher agent ID.
+
+    Returns:
+        tuple[tuple[_RegisteredAgent, ...], dict[str, CrusherConfig]]: Registrations
+            sorted by agent ID and revalidated configurations for registered crushers.
+    """
     regions = {stock.region for stock in initial_state.snapshot.inventories}
     registered: dict[str, _RegisteredAgent] = {}
     processing_configs: dict[str, CrusherConfig] = {}
@@ -121,7 +155,15 @@ def _prepare_agents(
 
 
 def _validate_identity(agent: Agent, regions: set[Region]) -> AgentIdentity:
-    """Require a validated identity belonging to a region represented by inventories."""
+    """Require a validated identity belonging to a region represented by inventories.
+
+    Args:
+        agent (Agent): Agent exposing an AgentIdentity to register.
+        regions (set[Region]): Regions represented by initial inventory records.
+
+    Returns:
+        AgentIdentity: Revalidated agent identity in a represented region.
+    """
     if not isinstance(agent.identity, AgentIdentity):
         raise SimulationError("agents must expose an AgentIdentity")
 
@@ -138,7 +180,16 @@ def _validate_identity(agent: Agent, regions: set[Region]) -> AgentIdentity:
 def _crusher_config(
     agent_id: str, crusher_configs: Mapping[str, CrusherConfig]
 ) -> CrusherConfig:
-    """Validate processing parameters even for crushers that later abstain."""
+    """Validate processing parameters even for crushers that later abstain.
+
+    Args:
+        agent_id (str): Crusher ID whose processing settings are required.
+        crusher_configs (Mapping[str, CrusherConfig]): Processing settings indexed by
+            crusher agent ID.
+
+    Returns:
+        CrusherConfig: Revalidated configuration for the requested crusher.
+    """
     config = crusher_configs.get(agent_id)
     if config is None:
         raise SimulationError(
@@ -154,7 +205,17 @@ def _crusher_config(
 def _collect_decisions(
     registered_agents: tuple[_RegisteredAgent, ...], snapshot: MarketSnapshot
 ) -> tuple[AgentDecision, ...]:
-    """Collect ordered intentions and verify their registered attribution."""
+    """Collect ordered intentions and verify their registered attribution.
+
+    Args:
+        registered_agents (tuple[_RegisteredAgent, ...]): Validated identity/agent pairs
+            in execution order.
+        snapshot (MarketSnapshot): Shared starting observation for the current month.
+
+    Returns:
+        tuple[AgentDecision, ...]: Agent-attributed intentions preserving registration
+            and per-agent decision order.
+    """
     decisions: list[AgentDecision] = []
     for identity, agent in registered_agents:
         for decision in agent.decide(snapshot):

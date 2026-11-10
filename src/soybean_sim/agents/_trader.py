@@ -14,7 +14,34 @@ _Fraction = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)
 
 
 class TraderConfig(BaseModel):
-    """Set USD/tonne baselines, monthly demand limits, and price-response fractions."""
+    """Set USD/tonne baselines, monthly demand limits, and price-response fractions.
+
+    Args:
+        reference_soybean_price_usd_per_tonne (float): Positive soybean reference price
+            in USD per metric tonne.
+        reference_soybean_meal_price_usd_per_tonne (float): Positive meal reference
+            price in USD per metric tonne.
+        reference_soybean_oil_price_usd_per_tonne (float): Positive oil reference price
+            in USD per metric tonne.
+        maximum_monthly_purchase_tonnes (NonNegativeTonnes): Nonnegative monthly soybean
+            purchase limit in metric tonnes.
+        low_price_ratio (float): Market/reference price ratio below which low-price
+            fractions apply.
+        high_price_ratio (float): Market/reference price ratio at which high-price
+            fractions begin.
+        low_purchase_fraction (float): Share of purchase capacity requested below the
+            low price threshold.
+        normal_purchase_fraction (float): Share of purchase capacity requested between
+            the price thresholds.
+        high_purchase_fraction (float): Share of purchase capacity requested at or above
+            the high threshold.
+        low_sale_fraction (float): Share of regional product stock offered below the low
+            price threshold.
+        normal_sale_fraction (float): Share of regional product stock offered between
+            the price thresholds.
+        high_sale_fraction (float): Share of regional product stock offered at or above
+            the high threshold.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
@@ -33,7 +60,11 @@ class TraderConfig(BaseModel):
 
     @model_validator(mode="after")
     def price_thresholds_are_ordered(self) -> Self:
-        """Require strictly increasing price-ratio thresholds."""
+        """Require strictly increasing price-ratio thresholds.
+
+        Returns:
+            Self: The validated trader configuration instance.
+        """
         if self.high_price_ratio <= self.low_price_ratio:
             raise ValueError("high_price_ratio must be greater than low_price_ratio")
 
@@ -41,7 +72,11 @@ class TraderConfig(BaseModel):
 
     @model_validator(mode="after")
     def purchase_fractions_are_ordered(self) -> Self:
-        """Require purchase demand to be nonincreasing as prices rise."""
+        """Require purchase demand to be nonincreasing as prices rise.
+
+        Returns:
+            Self: The validated trader configuration instance.
+        """
         if not (
             self.low_purchase_fraction
             >= self.normal_purchase_fraction
@@ -55,7 +90,11 @@ class TraderConfig(BaseModel):
 
     @model_validator(mode="after")
     def sale_fractions_are_ordered(self) -> Self:
-        """Require product sale fractions to be nondecreasing as prices rise."""
+        """Require product sale fractions to be nondecreasing as prices rise.
+
+        Returns:
+            Self: The validated trader configuration instance.
+        """
         if not (
             self.low_sale_fraction
             <= self.normal_sale_fraction
@@ -72,18 +111,38 @@ class TraderDecisionError(ValueError):
 
 @dataclass(frozen=True)
 class Trader:
-    """Represent regional trading intentions without ownership or execution."""
+    """Represent regional trading intentions without ownership or execution.
+
+    Args:
+        identity (AgentIdentity): Identity with the trader role and home region.
+        config (TraderConfig): Reference prices, purchase limit, and price-response
+            fractions.
+    """
 
     identity: AgentIdentity
     config: TraderConfig
 
     def __post_init__(self) -> None:
-        """Require the supplied identity to identify a trader agent."""
+        """Require the supplied identity to identify a trader agent.
+
+        Returns:
+            None: No value is returned.
+        """
         if self.identity.agent_type != AgentType.TRADER:
             raise ValueError("Trader identity must have agent_type='trader'")
 
     def decide(self, snapshot: MarketSnapshot) -> tuple[AgentDecision, ...]:
-        """Propose positive requests sorted by commodity and action identifiers."""
+        """Propose positive requests sorted by commodity and action identifiers.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month prices for all commodities and
+                regional meal and oil stocks.
+
+        Returns:
+            tuple[AgentDecision, ...]: Positive soybean purchase and product sale
+                intentions sorted by commodity and action; an empty tuple when all
+                quantities are zero.
+        """
         proposals = (
             self._soybean_purchase(snapshot),
             self._product_sale(
@@ -106,7 +165,15 @@ class Trader:
         )
 
     def _soybean_purchase(self, snapshot: MarketSnapshot) -> AgentDecision | None:
-        """Request soybean demand independently of current regional soybean stock."""
+        """Request soybean demand independently of current regional soybean stock.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global soybean reference price.
+
+        Returns:
+            AgentDecision | None: Soybean purchase request, or None when the requested
+                quantity is zero.
+        """
         market_price = self._commodity_price(snapshot, Commodity.SOYBEANS)
         price_ratio = market_price / self.config.reference_soybean_price_usd_per_tonne
 
@@ -128,7 +195,19 @@ class Trader:
     def _product_sale(
         self, snapshot: MarketSnapshot, commodity: Commodity, reference_price: float
     ) -> AgentDecision | None:
-        """Offer a price-dependent share of observed regional product stock."""
+        """Offer a price-dependent share of observed regional product stock.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global prices and regional product
+                stocks.
+            commodity (Commodity): Meal or oil commodity offered for sale.
+            reference_price (float): Positive reference price for the product in USD per
+                metric tonne.
+
+        Returns:
+            AgentDecision | None: Product sale offer, or None when the offered quantity
+                is zero.
+        """
         market_price = self._commodity_price(snapshot, commodity)
         regional_stock = self._regional_product_inventory(snapshot, commodity)
         price_ratio = market_price / reference_price
@@ -146,7 +225,15 @@ class Trader:
         )
 
     def _commodity_price(self, snapshot: MarketSnapshot, commodity: Commodity) -> float:
-        """Read a required global reference price or identify missing data."""
+        """Read a required global reference price or identify missing data.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global reference prices.
+            commodity (Commodity): Commodity whose reference price is required.
+
+        Returns:
+            float: Required reference price in USD per metric tonne.
+        """
         for price in snapshot.prices:
             if price.commodity == commodity:
                 return price.price_usd_per_tonne
@@ -158,7 +245,15 @@ class Trader:
     def _regional_product_inventory(
         self, snapshot: MarketSnapshot, commodity: Commodity
     ) -> float:
-        """Read regional product tonnes without inferring ownership or missing stock."""
+        """Read regional product tonnes without inferring ownership or missing stock.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month regional inventory observations.
+            commodity (Commodity): Product whose regional stock is required.
+
+        Returns:
+            float: Observed product stock in this trader's region, in metric tonnes.
+        """
         for stock in snapshot.inventories:
             if stock.region == self.identity.region and stock.commodity == commodity:
                 return stock.quantity_tonnes
@@ -168,7 +263,16 @@ class Trader:
         )
 
     def _purchase_fraction(self, price_ratio: float) -> float:
-        """Reduce the requested share of purchase capacity as soybean prices rise."""
+        """Reduce the requested share of purchase capacity as soybean prices rise.
+
+        Args:
+            price_ratio (float): Soybean market price divided by its configured
+                reference price.
+
+        Returns:
+            float: Configured share of monthly purchase capacity for the price-ratio
+                band.
+        """
         if price_ratio < self.config.low_price_ratio:
             return self.config.low_purchase_fraction
 
@@ -178,7 +282,15 @@ class Trader:
         return self.config.high_purchase_fraction
 
     def _sale_fraction(self, price_ratio: float) -> float:
-        """Increase the requested share of product stock as its price rises."""
+        """Increase the requested share of product stock as its price rises.
+
+        Args:
+            price_ratio (float): Product market price divided by its configured
+                reference price.
+
+        Returns:
+            float: Configured share of observed product stock for the price-ratio band.
+        """
         if price_ratio < self.config.low_price_ratio:
             return self.config.low_sale_fraction
 

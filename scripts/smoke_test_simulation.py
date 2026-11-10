@@ -46,24 +46,47 @@ _ABS_TOLERANCE_TONNES: Final = 1e-6
 
 @dataclass
 class _ObservedAgent:
-    """Forward decisions unchanged while recording even months of abstention."""
+    """Forward decisions unchanged while recording even months of abstention.
+
+    Args:
+        agent (Agent): Concrete agent whose decisions are forwarded unchanged.
+        months (list[date]): Mutable invocation-month log; defaults to an empty list.
+    """
 
     agent: Agent
     months: list[date] = field(default_factory=list)
 
     @property
     def identity(self) -> AgentIdentity:
-        """Expose the concrete agent's original registration identity."""
+        """Expose the concrete agent's original registration identity.
+
+        Returns:
+            AgentIdentity: Wrapped agent's original identity.
+        """
         return self.agent.identity
 
     def decide(self, snapshot: MarketSnapshot) -> tuple[AgentDecision, ...]:
-        """Record the actual invocation before delegating to the concrete agent."""
+        """Record the actual invocation before delegating to the concrete agent.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month observation passed to the wrapped
+                agent.
+
+        Returns:
+            tuple[AgentDecision, ...]: Wrapped agent's unchanged decisions after logging
+                the observation month.
+        """
         self.months.append(snapshot.month)
         return self.agent.decide(snapshot)
 
 
 def _load_input() -> SimulationInput:
-    """Select all supported annual balances and January global reference prices."""
+    """Select all supported annual balances and January global reference prices.
+
+    Returns:
+        SimulationInput: Validated source balances, January prices, and beginning-stock
+            inventories.
+    """
     balances = load_usda_psd_csv(_USDA_PATH, marketing_year=_MARKETING_YEAR)
     prices = load_world_bank_prices(
         _WORLD_BANK_PATH, start_month=_PRICE_MONTH, end_month=_PRICE_MONTH
@@ -81,7 +104,16 @@ def _load_input() -> SimulationInput:
 def _create_agents(
     initial: SimulationInput,
 ) -> tuple[tuple[Agent, ...], dict[str, CrusherConfig]]:
-    """Build one agent of each role per region, using initial prices as baselines."""
+    """Build one agent of each role per region, using initial prices as baselines.
+
+    Args:
+        initial (SimulationInput): Prepared inputs supplying initial global
+            reference-price baselines.
+
+    Returns:
+        tuple[tuple[Agent, ...], dict[str, CrusherConfig]]: One producer, crusher, and
+            trader per region, followed by crusher settings keyed by agent ID.
+    """
     prices = {item.commodity: item.price_usd_per_tonne for item in initial.prices}
     agents: list[Agent] = []
     configs: dict[str, CrusherConfig] = {}
@@ -130,7 +162,16 @@ def _create_agents(
 
 
 def _assert_close(actual: float, expected: float, context: str) -> None:
-    """Compare tonnes with tolerance for accumulated arithmetic on large stocks."""
+    """Compare tonnes with tolerance for accumulated arithmetic on large stocks.
+
+    Args:
+        actual (float): Observed quantity in metric tonnes.
+        expected (float): Expected quantity in metric tonnes.
+        context (str): Label included in assertion failure messages.
+
+    Returns:
+        None: No value is returned.
+    """
     assert math.isclose(
         actual,
         expected,
@@ -142,7 +183,17 @@ def _assert_close(actual: float, expected: float, context: str) -> None:
 def _validate_settlement(
     monthly: MonthlyResult, configs: dict[str, CrusherConfig]
 ) -> None:
-    """Check decision coverage, deferred trades, sequential stock bounds and yields."""
+    """Check decision coverage, deferred trades, sequential stock bounds and yields.
+
+    Args:
+        monthly (MonthlyResult): Completed month containing decisions, settlements, and
+            stocks.
+        configs (dict[str, CrusherConfig]): Crusher settings keyed by agent ID for
+            checking output yields.
+
+    Returns:
+        None: No value is returned.
+    """
     assert Counter(monthly.decisions) == Counter(
         item.decision for item in monthly.settlement_results
     ), f"{monthly.month}: settlements must cover every decision exactly once"
@@ -185,7 +236,17 @@ def _validate_settlement(
 def _validate_history(
     result: SimulationResult, configs: dict[str, CrusherConfig]
 ) -> None:
-    """Check all monthly stocks, unchanged price values, dates, and physical flows."""
+    """Check all monthly stocks, unchanged price values, dates, and physical flows.
+
+    Args:
+        result (SimulationResult): Completed simulation history whose dates, prices, and
+            stocks are checked.
+        configs (dict[str, CrusherConfig]): Crusher settings keyed by agent ID for
+            checking monthly settlement.
+
+    Returns:
+        None: No value is returned.
+    """
     initial_prices = {
         price.commodity: (price.price_usd_per_tonne, price.data_source)
         for price in result.initial_state.snapshot.prices
@@ -215,7 +276,18 @@ def _validate_history(
 def _run_checks(
     state: MarketState, agents: tuple[Agent, ...], configs: dict[str, CrusherConfig]
 ) -> SimulationResult:
-    """Compare independent runs and observe every agent's monthly opportunities."""
+    """Compare independent runs and observe every agent's monthly opportunities.
+
+    Args:
+        state (MarketState): Initial market state reused across independent simulation
+            runs.
+        agents (tuple[Agent, ...]): Registered agents used in normal, reordered, and
+            observed runs.
+        configs (dict[str, CrusherConfig]): Crusher settings keyed by agent ID.
+
+    Returns:
+        SimulationResult: Validated twelve-month result used for the printed report.
+    """
     original = state.model_dump_json()
     one_month = run_simulation(state, agents, crusher_configs=configs, months=1)
     annual = run_simulation(state, agents, crusher_configs=configs, months=12)
@@ -247,7 +319,17 @@ def _run_checks(
 
 
 def _print_input(initial: SimulationInput, agents: tuple[Agent, ...]) -> None:
-    """Summarize selected source records, baselines, and regional registrations."""
+    """Summarize selected source records, baselines, and regional registrations.
+
+    Args:
+        initial (SimulationInput): Prepared source records, reference prices, and
+            beginning stocks.
+        agents (tuple[Agent, ...]): Registered agents grouped by home region in the
+            report.
+
+    Returns:
+        None: No value is returned.
+    """
     print(f"USDA: {_USDA_PATH}")
     print(f"World Bank: {_WORLD_BANK_PATH}")
     print(
@@ -271,7 +353,15 @@ def _print_input(initial: SimulationInput, agents: tuple[Agent, ...]) -> None:
 
 
 def _print_results(result: SimulationResult) -> None:
-    """Display monthly regional crushing and stocks plus intention-only totals."""
+    """Display monthly regional crushing and stocks plus intention-only totals.
+
+    Args:
+        result (SimulationResult): Completed monthly history whose stocks and settlement
+            totals are printed.
+
+    Returns:
+        None: No value is returned.
+    """
     print("\nMonthly ending inventories and executed crushing (metric tonnes):")
     print(
         f"{'Month':<8} {'Region':<16} {'Crushed':>12} "
@@ -317,7 +407,12 @@ def _print_results(result: SimulationResult) -> None:
 
 
 def main() -> int:
-    """Run the manual acceptance check, reporting missing inputs or failed checks."""
+    """Run the manual acceptance check, reporting missing inputs or failed checks.
+
+    Returns:
+        int: Exit status 0 when all checks pass, or 1 for missing inputs or failed
+            checks.
+    """
     missing = [path for path in (_USDA_PATH, _WORLD_BANK_PATH) if not path.is_file()]
     if missing:
         for path in missing:

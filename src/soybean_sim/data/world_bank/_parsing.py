@@ -16,14 +16,30 @@ class WorldBankDataError(ValueError):
 
 
 class ParsedPrice(NamedTuple):
-    """Retain decimal precision for duplicates alongside the model's float price."""
+    """Retain decimal precision for duplicates alongside the model's float price.
+
+    Args:
+        source_value (Decimal): Exact positive source price in USD per metric tonne.
+        usd_per_tonne (float): Positive finite float representation in USD per metric
+            tonne.
+    """
 
     source_value: Decimal
     usd_per_tonne: float
 
 
 def validate_month_range(start_month: date | None, end_month: date | None) -> None:
-    """Check inclusive first-of-month boundaries without accepting datetimes."""
+    """Check inclusive first-of-month boundaries without accepting datetimes.
+
+    Args:
+        start_month (date | None): Inclusive first-of-month lower bound, or None for no
+            lower restriction.
+        end_month (date | None): Inclusive first-of-month upper bound, or None for no
+            upper restriction.
+
+    Returns:
+        None: No value is returned.
+    """
     if start_month is not None and end_month is not None and start_month > end_month:
         raise ValueError("start_month must not exceed end_month")
 
@@ -36,7 +52,15 @@ def validate_month_range(start_month: date | None, end_month: date | None) -> No
 
 
 def parse_month(source_month: object, source_context: str) -> date:
-    """Convert a YYYYMmm source label to the first day of that calendar month."""
+    """Convert a YYYYMmm source label to the first day of that calendar month.
+
+    Args:
+        source_month (object): Raw workbook value expected to contain a YYYYMmm label.
+        source_context (str): Workbook, sheet, and row label used in validation errors.
+
+    Returns:
+        date: First calendar day of the source month.
+    """
     match = (
         _MONTH_PATTERN.fullmatch(source_month.strip())
         if isinstance(source_month, str)
@@ -57,7 +81,17 @@ def parse_month(source_month: object, source_context: str) -> date:
 
 
 def parse_price(source_price: object, source_context: str) -> ParsedPrice | None:
-    """Parse a positive USD/tonne value; skip blanks and verified ellipsis markers."""
+    """Parse a positive USD/tonne value; skip blanks and verified ellipsis markers.
+
+    Args:
+        source_price (object): Raw workbook price in USD per metric tonne, or a
+            missing-value marker.
+        source_context (str): Observation label used in validation errors.
+
+    Returns:
+        ParsedPrice | None: Exact decimal and finite float price, or None for a missing
+            observation.
+    """
     if source_price is None:
         return None
 
@@ -74,7 +108,15 @@ def parse_price(source_price: object, source_context: str) -> ParsedPrice | None
 
 
 def _parse_decimal_price(source_price: object, source_context: str) -> Decimal:
-    """Validate a supported source value and retain its positive decimal precision."""
+    """Validate a supported source value and retain its positive decimal precision.
+
+    Args:
+        source_price (object): Raw numeric or string price in USD per metric tonne.
+        source_context (str): Observation label used in validation errors.
+
+    Returns:
+        Decimal: Positive finite source price retained as an exact decimal.
+    """
     if isinstance(source_price, bool) or not isinstance(
         source_price, (int, float, str)
     ):
@@ -99,7 +141,16 @@ def _parse_decimal_price(source_price: object, source_context: str) -> Decimal:
 
 
 def _to_model_price(source_value: Decimal, source_context: str) -> float:
-    """Convert a validated decimal to a positive finite float for CommodityPrice."""
+    """Convert a validated decimal to a positive finite float for CommodityPrice.
+
+    Args:
+        source_value (Decimal): Validated positive decimal price in USD per metric
+            tonne.
+        source_context (str): Observation label used in representation errors.
+
+    Returns:
+        float: Positive finite float price suitable for CommodityPrice.
+    """
     price = float(source_value)
     if not math.isfinite(price) or price <= 0:
         raise WorldBankDataError(

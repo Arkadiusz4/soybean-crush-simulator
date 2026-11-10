@@ -28,6 +28,23 @@ def select_market_data(
     commodity. Identical duplicates count once; conflicting selected records
     are invalid. Return balances sorted by region/commodity and prices by
     commodity, preserving original models and unknown quantities.
+
+    Args:
+        balances (Iterable[MarketBalance]): Annual regional balances available for
+            selection.
+        prices (Iterable[CommodityPrice]): Global monthly reference prices available for
+            selection.
+        marketing_year (str): Source marketing-year label to select.
+        price_month (date): First calendar day of the required reference-price month.
+        regions (Iterable[Region]): Nonempty selection of required regions; repeated
+            identifiers count once.
+        commodities (Iterable[Commodity]): Nonempty selection of required commodities;
+            repeated identifiers count once.
+
+    Returns:
+        tuple[tuple[MarketBalance, ...], tuple[CommodityPrice, ...]]: Selected annual
+            balances followed by monthly prices, sorted by region/commodity and
+            commodity respectively.
     """
     year_label = _validate_periods(marketing_year, price_month)
     selected_regions, selected_commodities = _normalize_selections(regions, commodities)
@@ -47,7 +64,16 @@ def select_market_data(
 
 
 def _validate_periods(marketing_year: str, price_month: date) -> str:
-    """Validate independent periods and trim the year label like MarketBalance does."""
+    """Validate independent periods and trim the year label like MarketBalance does.
+
+    Args:
+        marketing_year (str): Nonempty source marketing-year label.
+        price_month (date): First calendar day of the independently selected price
+            month.
+
+    Returns:
+        str: Marketing-year label with surrounding whitespace removed.
+    """
     if not isinstance(marketing_year, str) or not marketing_year.strip():
         raise MarketDataSelectionError("marketing_year must be a nonempty string label")
 
@@ -62,7 +88,16 @@ def _validate_periods(marketing_year: str, price_month: date) -> str:
 def _normalize_selections(
     regions: Iterable[Region], commodities: Iterable[Commodity]
 ) -> tuple[set[Region], set[Commodity]]:
-    """Resolve nonempty enum selections and collapse repeated identifiers."""
+    """Resolve nonempty enum selections and collapse repeated identifiers.
+
+    Args:
+        regions (Iterable[Region]): Required region identifiers.
+        commodities (Iterable[Commodity]): Required commodity identifiers.
+
+    Returns:
+        tuple[set[Region], set[Commodity]]: Nonempty sets of region and commodity enums
+            with duplicates removed.
+    """
     if isinstance(regions, (str, bytes)) or isinstance(commodities, (str, bytes)):
         raise MarketDataSelectionError(
             "regions and commodities must be collections of identifiers, not strings"
@@ -92,7 +127,18 @@ def _select_balances(
     regions: set[Region],
     commodities: set[Commodity],
 ) -> dict[_BalanceKey, MarketBalance]:
-    """Keep requested annual records and check duplicates within the selected scope."""
+    """Keep requested annual records and check duplicates within the selected scope.
+
+    Args:
+        balances (Iterable[MarketBalance]): Annual regional records to filter.
+        marketing_year (str): Trimmed source marketing-year label to match.
+        regions (set[Region]): Required regions.
+        commodities (set[Commodity]): Required commodities.
+
+    Returns:
+        dict[_BalanceKey, MarketBalance]: Selected records keyed by region and
+            commodity, with equal duplicates collapsed.
+    """
     selected: dict[_BalanceKey, MarketBalance] = {}
     for balance in balances:
         if (
@@ -118,7 +164,17 @@ def _select_balances(
 def _select_prices(
     prices: Iterable[CommodityPrice], price_month: date, commodities: set[Commodity]
 ) -> dict[Commodity, CommodityPrice]:
-    """Select global commodity prices and check for conflicting records."""
+    """Select global commodity prices and check for conflicting records.
+
+    Args:
+        prices (Iterable[CommodityPrice]): Global reference-price records to filter.
+        price_month (date): Required reference-price month.
+        commodities (set[Commodity]): Required commodities.
+
+    Returns:
+        dict[Commodity, CommodityPrice]: Selected global prices keyed by commodity, with
+            equal duplicates collapsed.
+    """
     selected: dict[Commodity, CommodityPrice] = {}
     for price in prices:
         if price.month != price_month or price.commodity not in commodities:
@@ -141,7 +197,18 @@ def _validate_balance_coverage(
     regions: set[Region],
     commodities: set[Commodity],
 ) -> None:
-    """Check that every explicitly requested region/commodity pair is present."""
+    """Check that every explicitly requested region/commodity pair is present.
+
+    Args:
+        balances (Mapping[_BalanceKey, MarketBalance]): Selected annual balances keyed
+            by region and commodity.
+        marketing_year (str): Source year label included in missing-record messages.
+        regions (set[Region]): Regions requiring complete commodity coverage.
+        commodities (set[Commodity]): Commodities required for every selected region.
+
+    Returns:
+        None: No value is returned.
+    """
     missing = set(product(regions, commodities)) - balances.keys()
     if missing:
         pairs = ", ".join(
@@ -157,7 +224,17 @@ def _validate_price_coverage(
     price_month: date,
     commodities: set[Commodity],
 ) -> None:
-    """Check global commodity coverage without requiring separate prices per region."""
+    """Check global commodity coverage without requiring separate prices per region.
+
+    Args:
+        prices (Mapping[Commodity, CommodityPrice]): Selected global reference prices
+            keyed by commodity.
+        price_month (date): Required month included in missing-record messages.
+        commodities (set[Commodity]): Commodities requiring a global price.
+
+    Returns:
+        None: No value is returned.
+    """
     missing = commodities - prices.keys()
     if missing:
         identifiers = ", ".join(commodity.value for commodity in sorted(missing))

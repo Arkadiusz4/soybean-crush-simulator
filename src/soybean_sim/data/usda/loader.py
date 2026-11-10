@@ -36,6 +36,24 @@ def load_usda_psd_csv(
     Convert only unit 08 / (1000 MT) to tonnes. Missing quantities remain None,
     equivalent duplicates count once, and no matches return an empty tuple.
     Annual quantities are never allocated to months.
+
+    Args:
+        path (str | Path): Path to a local UTF-8 USDA PSD CSV file, optionally with a
+            byte-order mark.
+        marketing_year (str | None): Single four-digit year label, mutually exclusive
+            with range bounds.
+        start_year (int | None): Inclusive lower marketing-year bound, or None for no
+            lower restriction.
+        end_year (int | None): Inclusive upper marketing-year bound, or None for no
+            upper restriction.
+        regions (Iterable[Region] | None): Regions to retain; None selects all and an
+            empty iterable selects none.
+        commodities (Iterable[Commodity] | None): Commodities to retain; None selects
+            all and an empty iterable selects none.
+
+    Returns:
+        tuple[MarketBalance, ...]: Annual balances in metric tonnes sorted by region,
+            commodity, and year; an empty tuple when no records match.
     """
     year_bounds = parsing.resolve_year_bounds(marketing_year, start_year, end_year)
     selected_regions = (
@@ -67,6 +85,13 @@ def _validate_columns(columns: Sequence[str], csv_path: Path) -> None:
     """Check that required headers exist and all column names are nonempty and unique.
 
     Check missing names first; allow unrelated extra columns without renaming them.
+
+    Args:
+        columns (Sequence[str]): CSV header names to check.
+        csv_path (Path): Source file path included in format errors.
+
+    Returns:
+        None: No value is returned.
     """
     missing_columns = mappings.REQUIRED_COLUMNS - set(columns)
     if missing_columns:
@@ -90,6 +115,17 @@ def _read_observations(
 
     The reader must have a validated header. Year bounds are inclusive. Retain exact
     source decimals for duplicate comparisons alongside converted tonnes.
+
+    Args:
+        reader (csv.DictReader[str]): CSV reader with a validated header.
+        csv_path (Path): Source file path included in row errors.
+        year_bounds (tuple[int, int]): Inclusive lower and upper marketing-year bounds.
+        selected_regions (set[Region]): Regions to retain.
+        selected_commodities (set[Commodity]): Commodities to retain.
+
+    Returns:
+        _GroupedBalances: Attribute quantities grouped by region, commodity, and source
+            year, retaining exact decimals for duplicate checks.
     """
     grouped_observations: _GroupedBalances = {}
 
@@ -115,7 +151,16 @@ def _read_observations(
 def _normalize_csv_row(
     row: Mapping[str | None, str | list[str] | None], source_context: str
 ) -> dict[str, str]:
-    """Check row width and strip surrounding whitespace from each cell."""
+    """Check row width and strip surrounding whitespace from each cell.
+
+    Args:
+        row (Mapping[str | None, str | list[str] | None]): Raw CSV row whose cells and
+            width require validation.
+        source_context (str): File and row label used in format errors.
+
+    Returns:
+        dict[str, str]: Column names mapped to trimmed string cells.
+    """
     normalized_row = {}
     for column_name, cell_value in row.items():
         if column_name is None or not isinstance(cell_value, str):
@@ -138,6 +183,17 @@ def _select_observation(
     Filter commodity/region codes, then attributes, then inclusive year bounds.
     Ignore meal/oil crush before parsing years and verify recognized attribute IDs
     before year filtering. Other metadata and values are parsed later.
+
+    Args:
+        row (dict[str, str]): Normalized CSV cells to filter.
+        source_context (str): File and row label used in observation errors.
+        year_bounds (tuple[int, int]): Inclusive lower and upper marketing-year bounds.
+        selected_regions (set[Region]): Regions to retain.
+        selected_commodities (set[Commodity]): Commodities to retain.
+
+    Returns:
+        tuple[_BalanceKey, str] | None: Balance key and destination quantity field, or
+            None for an excluded row.
     """
     commodity_mapping = mappings.COMMODITIES.get(row["Commodity_Code"])
     region_mapping = mappings.REGIONS.get(row["Country_Code"])
@@ -187,6 +243,17 @@ def _record_observation(
 
     Equivalent duplicates count once. None stays distinct from a known quantity
     when checking for conflicting observations.
+
+    Args:
+        grouped_observations (_GroupedBalances): Grouped quantities updated in place.
+        balance_key (_BalanceKey): Region, commodity, and source marketing-year key.
+        field_name (str): MarketBalance quantity field represented by the attribute.
+        quantity (parsing.ParsedQuantity): Parsed source decimal and converted metric
+            tonnes.
+        source_context (str): File and row label used in duplicate-conflict errors.
+
+    Returns:
+        None: No value is returned.
     """
     attribute_quantities = grouped_observations.setdefault(balance_key, {})
     previous_quantity = attribute_quantities.get(field_name)
@@ -209,6 +276,14 @@ def _build_balances(
 
     Absent attributes become None; recorded zeroes remain zero. Quantities are
     already in tonnes and are not imputed or reconciled here.
+
+    Args:
+        grouped_observations (_GroupedBalances): Validated attribute quantities grouped
+            by annual balance key.
+
+    Returns:
+        tuple[MarketBalance, ...]: Immutable annual balances sorted by region,
+            commodity, and source year.
     """
     balances = []
     for balance_key in sorted(grouped_observations):
