@@ -11,7 +11,7 @@ from soybean_sim.market import (
     MarketFlowError,
     MarketFlowType,
     MonthlyFlowConfig,
-    flows,
+    _flows,
     generate_monthly_flows,
 )
 from soybean_sim.models import Commodity, MarketBalance, Region
@@ -47,9 +47,9 @@ def balances(balance: MarketBalance) -> list[MarketBalance]:
 
 def test_public_exports() -> None:
     """Expose monthly allocation independently of the state and settlement APIs."""
-    assert generate_monthly_flows is flows.generate_monthly_flows
-    assert MonthlyFlowConfig is flows.MonthlyFlowConfig
-    assert MarketFlowError is flows.MarketFlowError
+    assert generate_monthly_flows is _flows.generate_monthly_flows
+    assert MonthlyFlowConfig is _flows.MonthlyFlowConfig
+    assert MarketFlowError is _flows.MarketFlowError
     assert issubclass(MarketFlowError, ValueError)
     assert {"generate_monthly_flows", "MonthlyFlowConfig", "MarketFlowError"} <= set(
         market.__all__

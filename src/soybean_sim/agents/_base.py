@@ -4,7 +4,7 @@ from typing import Protocol
 
 from soybean_sim.models import MarketSnapshot
 
-from .models import AgentDecision, AgentIdentity
+from ._models import AgentDecision, AgentIdentity
 
 
 class Agent(Protocol):

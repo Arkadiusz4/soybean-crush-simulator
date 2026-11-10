@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from soybean_sim.agents import AgentDecision, AgentIdentity, AgentType, DecisionAction
-from soybean_sim.agents import models as implementation
+from soybean_sim.agents import _models as implementation
 from soybean_sim.models import Commodity, Region
 
 

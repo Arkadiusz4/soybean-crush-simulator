@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from soybean_sim.models import Commodity, MarketBalance, Region
 
-from .contracts import MarketFlow, MarketFlowType
+from ._contracts import MarketFlow, MarketFlowType
 
 _MONTHS_PER_YEAR: Final = 12
 _WEIGHT_SUM_TOLERANCE: Final = 1e-9

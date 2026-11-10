@@ -11,8 +11,8 @@ from pydantic import ValidationError
 
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 
-from .contracts import MarketFlow, MarketFlowType
-from .models import MarketState
+from ._contracts import MarketFlow, MarketFlowType
+from ._models import MarketState
 
 _InventoryKey = tuple[Region, Commodity]
 _FlowKey = tuple[date, Region, Commodity, MarketFlowType]

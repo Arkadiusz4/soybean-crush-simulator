@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from soybean_sim.agents import AgentDecision
 from soybean_sim.market import MarketState, SettlementResult
 
-from . import calendar
+from . import _calendar
 
 
 class MonthlyResult(BaseModel):
@@ -68,7 +68,7 @@ class SimulationResult(BaseModel):
             raise ValueError("final_state must match the last completed ending state")
 
         for previous, current in pairwise(self.monthly_results):
-            if current.starting_state != calendar.advance_market_month(
+            if current.starting_state != _calendar.advance_market_month(
                 previous.ending_state
             ):
                 raise ValueError(

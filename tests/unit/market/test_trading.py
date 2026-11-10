@@ -9,8 +9,8 @@ from soybean_sim.agents import AgentDecision, AgentIdentity, AgentType, Decision
 from soybean_sim.market import (
     TradeExecution,
     TradeMatchingError,
+    _trading,
     match_interregional_trades,
-    trading,
 )
 from soybean_sim.models import Commodity, Inventory, Region
 
@@ -56,8 +56,8 @@ def inventory() -> Inventory:
 
 def test_public_exports() -> None:
     """Expose independent trade matching and its domain error through the market API."""
-    assert match_interregional_trades is trading.match_interregional_trades
-    assert TradeMatchingError is trading.TradeMatchingError
+    assert match_interregional_trades is _trading.match_interregional_trades
+    assert TradeMatchingError is _trading.TradeMatchingError
     assert issubclass(TradeMatchingError, ValueError)
     assert {"match_interregional_trades", "TradeMatchingError"} <= set(market.__all__)
 

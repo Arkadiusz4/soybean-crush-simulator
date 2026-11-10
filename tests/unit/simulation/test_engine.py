@@ -29,9 +29,9 @@ from soybean_sim.simulation import (
     MonthlyResult,
     SimulationError,
     SimulationResult,
-    calendar,
-    engine,
-    models,
+    _calendar,
+    _engine,
+    _models,
     next_month,
     run_simulation,
 )
@@ -83,11 +83,11 @@ def _redate(state: MarketState, month: date) -> MarketState:
 
 def test_public_exports() -> None:
     """Expose engine execution, calendar advancement, and frozen history models."""
-    assert run_simulation is engine.run_simulation
-    assert SimulationError is engine.SimulationError
-    assert next_month is calendar.next_month
-    assert MonthlyResult is models.MonthlyResult
-    assert SimulationResult is models.SimulationResult
+    assert run_simulation is _engine.run_simulation
+    assert SimulationError is _engine.SimulationError
+    assert next_month is _calendar.next_month
+    assert MonthlyResult is _models.MonthlyResult
+    assert SimulationResult is _models.SimulationResult
 
 
 def test_one_month_integrates_concrete_agents(
@@ -267,7 +267,7 @@ def test_settlement_called_once_per_month(
         calls.append((state, batch))
         return settle_decisions(state, batch, crusher_configs=crusher_configs)
 
-    monkeypatch.setattr(engine, "settle_decisions", record_settlement)
+    monkeypatch.setattr(_engine, "settle_decisions", record_settlement)
     result = run_simulation(state, agents, crusher_configs=configs, months=3)
     assert len(calls) == 3
     assert [batch for _, batch in calls] == [

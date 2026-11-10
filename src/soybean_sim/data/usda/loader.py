@@ -6,8 +6,9 @@ from pathlib import Path
 
 from soybean_sim.models import Commodity, MarketBalance, Region
 
-from . import mappings, parsing
-from .errors import (
+from . import _mappings as mappings
+from . import _parsing as parsing
+from ._errors import (
     USDAFileError,
     USDAFormatError,
     USDAObservationError,

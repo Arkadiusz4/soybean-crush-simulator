@@ -12,7 +12,7 @@ from soybean_sim.agents import (
     CrusherDecisionError,
     DecisionAction,
 )
-from soybean_sim.agents import crusher as implementation
+from soybean_sim.agents import _crusher as implementation
 from soybean_sim.models import (
     Commodity,
     CommodityPrice,

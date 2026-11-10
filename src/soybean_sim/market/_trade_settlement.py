@@ -8,8 +8,8 @@ from pydantic import ValidationError
 
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 
-from .contracts import TradeExecution
-from .models import MarketState
+from ._contracts import TradeExecution
+from ._models import MarketState
 
 _InventoryKey = tuple[Region, Commodity]
 _Transfers = dict[_InventoryKey, list[float]]

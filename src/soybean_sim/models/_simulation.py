@@ -4,7 +4,7 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .market import CommodityPrice, Inventory, MarketBalance
+from ._market import CommodityPrice, Inventory, MarketBalance
 
 
 class SimulationInput(BaseModel):

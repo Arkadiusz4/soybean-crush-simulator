@@ -14,7 +14,7 @@ from soybean_sim.market import (
     MarketFlowType,
     MarketState,
     MonthlyFlowConfig,
-    flow_settlement,
+    _flow_settlement,
     generate_monthly_flows,
     settle_monthly_flows,
 )
@@ -66,8 +66,8 @@ def flow(state: MarketState) -> MarketFlow:
 
 def test_public_exports() -> None:
     """Expose physical flow settlement and its error through the market package."""
-    assert settle_monthly_flows is flow_settlement.settle_monthly_flows
-    assert FlowSettlementError is flow_settlement.FlowSettlementError
+    assert settle_monthly_flows is _flow_settlement.settle_monthly_flows
+    assert FlowSettlementError is _flow_settlement.FlowSettlementError
     assert issubclass(FlowSettlementError, ValueError)
     assert {"settle_monthly_flows", "FlowSettlementError"} <= set(market.__all__)
 

@@ -12,7 +12,7 @@ from soybean_sim.market import (
     PriceDynamicsConfig,
     PriceDynamicsError,
     RegionalPrice,
-    pricing,
+    _pricing,
     update_regional_prices,
 )
 from soybean_sim.models import Commodity, Region
@@ -43,9 +43,9 @@ def pressure() -> MarketPressure:
 
 def test_public_exports() -> None:
     """Expose regional price calculations without changing the simulation API."""
-    assert update_regional_prices is pricing.update_regional_prices
-    assert PriceDynamicsConfig is pricing.PriceDynamicsConfig
-    assert PriceDynamicsError is pricing.PriceDynamicsError
+    assert update_regional_prices is _pricing.update_regional_prices
+    assert PriceDynamicsConfig is _pricing.PriceDynamicsConfig
+    assert PriceDynamicsError is _pricing.PriceDynamicsError
     assert issubclass(PriceDynamicsError, ValueError)
     assert {
         "PriceDynamicsConfig",

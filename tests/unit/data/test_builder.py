@@ -7,8 +7,8 @@ from pydantic import ValidationError
 from soybean_sim.data import (
     InventoryInitializationError,
     MarketDataSelectionError,
+    _builder,
     build_simulation_input,
-    builder,
 )
 from soybean_sim.models import (
     Commodity,
@@ -74,7 +74,7 @@ def options() -> dict[str, Any]:
 
 def test_public_exports() -> None:
     """Expose the assembly function through the data package and its module."""
-    assert build_simulation_input is builder.build_simulation_input
+    assert build_simulation_input is _builder.build_simulation_input
 
 
 def test_assembles_complete_input_without_mutation(

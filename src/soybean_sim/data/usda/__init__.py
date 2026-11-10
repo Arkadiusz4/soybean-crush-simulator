@@ -4,7 +4,7 @@ The package exports the loader and its error types; parsing and mapping helpers
 remain implementation details. Loading never allocates annual values to months.
 """
 
-from .errors import (
+from ._errors import (
     USDADataError,
     USDAFileError,
     USDAFormatError,

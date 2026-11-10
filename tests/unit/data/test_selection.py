@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from soybean_sim.data import MarketDataSelectionError, select_market_data, selection
+from soybean_sim.data import MarketDataSelectionError, _selection, select_market_data
 from soybean_sim.models import Commodity, CommodityPrice, MarketBalance, Region
 
 
@@ -54,8 +54,8 @@ def options() -> dict[str, Any]:
 
 def test_public_exports() -> None:
     """Expose the selector and its domain exception through the data package."""
-    assert select_market_data is selection.select_market_data
-    assert MarketDataSelectionError is selection.MarketDataSelectionError
+    assert select_market_data is _selection.select_market_data
+    assert MarketDataSelectionError is _selection.MarketDataSelectionError
     assert issubclass(MarketDataSelectionError, ValueError)
 
 

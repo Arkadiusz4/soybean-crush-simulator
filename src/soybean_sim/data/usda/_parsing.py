@@ -6,9 +6,9 @@ from datetime import MAXYEAR, MINYEAR
 from decimal import Decimal, DecimalException, InvalidOperation
 from typing import Final, NamedTuple
 
-from . import mappings
-from .errors import USDADataError as USDADataError
-from .errors import USDAObservationError
+from . import _mappings as mappings
+from ._errors import USDADataError as USDADataError
+from ._errors import USDAObservationError
 
 _YEAR_LABEL_PATTERN: Final = re.compile(r"[0-9]{4}")
 

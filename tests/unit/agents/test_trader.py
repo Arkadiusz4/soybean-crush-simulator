@@ -12,7 +12,7 @@ from soybean_sim.agents import (
     TraderConfig,
     TraderDecisionError,
 )
-from soybean_sim.agents import trader as implementation
+from soybean_sim.agents import _trader as implementation
 from soybean_sim.models import (
     Commodity,
     CommodityPrice,
