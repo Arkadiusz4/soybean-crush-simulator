@@ -28,6 +28,12 @@ def match_interregional_trades(
 
     Prioritize commodity, then seller/buyer region and ID. Sellers share starting
     stock; purchases do not replenish it. Skip CRUSH and zero-quantity matches.
+
+    @param decisions: Agent intentions for the matching month
+        (``Iterable[AgentDecision]``).
+    @param inventories: Starting regional stocks (``Iterable[Inventory]``).
+    @param month: First calendar day of the matching month (``date``).
+    @return: Matched interregional executions (``tuple[TradeExecution, ...]``).
     """
     if type(month) is not date or month.day != 1:
         raise TradeMatchingError("month must be a date on the first day of a month")
@@ -49,7 +55,12 @@ def match_interregional_trades(
 
 
 def _validate_decision(decision: AgentDecision, month: date) -> AgentDecision:
-    """Revalidate nested decision data and require the requested matching month."""
+    """Revalidate nested decision data and require the requested matching month.
+
+    @param decision: Candidate agent decision (``AgentDecision``).
+    @param month: Expected first-of-month matching date (``date``).
+    @return: Revalidated decision for the requested month (``AgentDecision``).
+    """
     if not isinstance(decision, AgentDecision):
         raise TradeMatchingError("decisions must contain AgentDecision records")
     try:
@@ -69,7 +80,12 @@ def _validate_decision(decision: AgentDecision, month: date) -> AgentDecision:
 def _trade_intentions(
     decisions: Iterable[AgentDecision], month: date
 ) -> tuple[AgentDecision, ...]:
-    """Require stable identities and unique trade keys, excluding validated crushing."""
+    """Require stable identities and unique trade keys, excluding validated crushing.
+
+    @param decisions: Candidate agent decisions (``Iterable[AgentDecision]``).
+    @param month: Expected first-of-month matching date (``date``).
+    @return: Unique trade intentions for the month (``tuple[AgentDecision, ...]``).
+    """
     identities: dict[str, AgentIdentity] = {}
     seen: set[_IntentionKey] = set()
     intentions: list[AgentDecision] = []
@@ -102,7 +118,13 @@ def _trade_intentions(
 def _inventory_availability(
     inventories: Iterable[Inventory],
 ) -> dict[_InventoryKey, float]:
-    """Validate unique regional stocks and copy quantities into local counters."""
+    """Validate unique regional stocks and copy quantities into local counters.
+
+    @param inventories: Candidate regional inventory records
+        (``Iterable[Inventory]``).
+    @return: Mutable available quantities by region and commodity
+        (``dict[tuple[Region, Commodity], float]``).
+    """
     available: dict[_InventoryKey, float] = {}
     for inventory in inventories:
         if not isinstance(inventory, Inventory):
@@ -129,7 +151,14 @@ def _match_intentions(
     buyers: list[AgentDecision],
     available: dict[_InventoryKey, float],
 ) -> tuple[TradeExecution, ...]:
-    """Allocate ordered offers to eligible buyers using batch-local counters."""
+    """Allocate ordered offers to eligible buyers using batch-local counters.
+
+    @param sellers: Ordered sale offers (``list[AgentDecision]``).
+    @param buyers: Ordered purchase requests (``list[AgentDecision]``).
+    @param available: Mutable starting stock counters by region and commodity
+        (``dict[tuple[Region, Commodity], float]``).
+    @return: Matched interregional executions (``tuple[TradeExecution, ...]``).
+    """
     remaining_demand = [buyer.quantity_tonnes for buyer in buyers]
     trades: list[TradeExecution] = []
     for seller in sellers:
