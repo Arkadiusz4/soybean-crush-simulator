@@ -10,9 +10,9 @@ from soybean_sim.data.usda import (
     USDAFileError,
     USDAFormatError,
     USDAObservationError,
-    errors,
+    _errors,
+    _parsing,
     load_usda_psd_csv,
-    parsing,
 )
 from soybean_sim.data.usda.loader import load_usda_psd_csv as implementation
 from soybean_sim.models import Commodity, Region
@@ -21,7 +21,7 @@ from soybean_sim.models import Commodity, Region
 def test_public_exports_refer_to_the_implementation() -> None:
     """Check that package imports expose the original loader and exception objects."""
     assert load_usda_psd_csv is implementation
-    assert USDADataError is parsing.USDADataError
+    assert USDADataError is _parsing.USDADataError
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ def test_specific_errors_remain_compatible_with_base_error(
     error_type: type[USDADataError],
 ) -> None:
     """Keep specific failure categories catchable through the original base error."""
-    assert getattr(errors, error_type.__name__) is error_type
+    assert getattr(_errors, error_type.__name__) is error_type
     assert issubclass(error_type, USDADataError)
     assert issubclass(error_type, ValueError)
 

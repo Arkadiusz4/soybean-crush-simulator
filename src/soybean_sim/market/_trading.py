@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from soybean_sim.agents import AgentDecision, AgentIdentity, DecisionAction
 from soybean_sim.models import Commodity, Inventory, Region
 
-from .contracts import TradeExecution
+from ._contracts import TradeExecution
 
 _InventoryKey = tuple[Region, Commodity]
 _IntentionKey = tuple[str, DecisionAction, Commodity, date]

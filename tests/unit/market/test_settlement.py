@@ -16,9 +16,9 @@ from soybean_sim.market import (
     SettlementError,
     SettlementOutcome,
     SettlementResult,
-    models,
+    _models,
+    _settlement,
     settle_decisions,
-    settlement,
 )
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 
@@ -55,11 +55,11 @@ def _with_stocks(
 
 def test_public_exports() -> None:
     """Expose state, result, outcome, function, and domain exception through market."""
-    assert MarketState is models.MarketState
-    assert SettlementResult is models.SettlementResult
-    assert SettlementOutcome is models.SettlementOutcome
-    assert SettlementError is settlement.SettlementError
-    assert settle_decisions is settlement.settle_decisions
+    assert MarketState is _models.MarketState
+    assert SettlementResult is _models.SettlementResult
+    assert SettlementOutcome is _models.SettlementOutcome
+    assert SettlementError is _settlement.SettlementError
+    assert settle_decisions is _settlement.settle_decisions
 
 
 def test_crush_execution_and_mass_conservation(

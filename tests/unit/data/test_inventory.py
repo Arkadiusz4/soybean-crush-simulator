@@ -2,8 +2,8 @@ import pytest
 
 from soybean_sim.data import (
     InventoryInitializationError,
+    _inventory,
     build_initial_inventories,
-    inventory,
 )
 from soybean_sim.models import Commodity, Inventory, MarketBalance, Region
 
@@ -35,8 +35,8 @@ def balances() -> list[MarketBalance]:
 
 def test_public_exports() -> None:
     """Expose the builder and domain exception from the data package and module."""
-    assert build_initial_inventories is inventory.build_initial_inventories
-    assert InventoryInitializationError is inventory.InventoryInitializationError
+    assert build_initial_inventories is _inventory.build_initial_inventories
+    assert InventoryInitializationError is _inventory.InventoryInitializationError
     assert issubclass(InventoryInitializationError, ValueError)
 
 

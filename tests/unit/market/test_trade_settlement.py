@@ -12,8 +12,8 @@ from soybean_sim.market import (
     MarketState,
     TradeExecution,
     TradeSettlementError,
+    _trade_settlement,
     settle_matched_trades,
-    trade_settlement,
 )
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 
@@ -59,8 +59,8 @@ def trade(state: MarketState) -> TradeExecution:
 
 def test_public_exports() -> None:
     """Expose the independent settlement function and its domain-specific error."""
-    assert settle_matched_trades is trade_settlement.settle_matched_trades
-    assert TradeSettlementError is trade_settlement.TradeSettlementError
+    assert settle_matched_trades is _trade_settlement.settle_matched_trades
+    assert TradeSettlementError is _trade_settlement.TradeSettlementError
     assert issubclass(TradeSettlementError, ValueError)
     assert {"settle_matched_trades", "TradeSettlementError"} <= set(market.__all__)
 

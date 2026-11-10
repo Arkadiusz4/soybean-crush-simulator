@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from soybean_sim.models import Commodity, MarketSnapshot
 
-from .models import AgentDecision, AgentIdentity, AgentType, DecisionAction
+from ._models import AgentDecision, AgentIdentity, AgentType, DecisionAction
 
 _YIELD_SUM_TOLERANCE: Final = 1e-9
 _PositiveFinite = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]

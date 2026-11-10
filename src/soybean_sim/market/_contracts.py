@@ -8,8 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from soybean_sim.models import Commodity, NonNegativeTonnes, Region
 
-from .pressure import MarketPressure
-from .trade import TradeExecution
+from ._pressure import MarketPressure
+from ._trade import TradeExecution
 
 __all__ = [
     "MarketFlow",

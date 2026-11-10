@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Final, NamedTuple
 
-from . import mappings
+from . import _mappings as mappings
 
 _MONTH_PATTERN: Final = re.compile(r"([0-9]{4})M([0-9]{2})")
 

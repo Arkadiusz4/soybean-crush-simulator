@@ -11,7 +11,7 @@ from soybean_sim.models import (
     MarketSnapshot,
     Region,
 )
-from soybean_sim.models.snapshot import MarketSnapshot as SnapshotImplementation
+from soybean_sim.models._snapshot import MarketSnapshot as SnapshotImplementation
 
 
 @pytest.fixture

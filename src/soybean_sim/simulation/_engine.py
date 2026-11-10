@@ -15,8 +15,8 @@ from soybean_sim.agents import (
 from soybean_sim.market import MarketState, settle_decisions
 from soybean_sim.models import MarketSnapshot, Region
 
-from . import calendar
-from .models import MonthlyResult, SimulationResult
+from . import _calendar
+from ._models import MonthlyResult, SimulationResult
 
 _MONTHS_PER_YEAR: Final = 12
 _RegisteredAgent = tuple[AgentIdentity, Agent]
@@ -48,7 +48,7 @@ def run_simulation(
     history: list[MonthlyResult] = []
     for month_index in range(months):
         if month_index:
-            state = calendar.advance_market_month(state)
+            state = _calendar.advance_market_month(state)
 
         decisions = _collect_decisions(registered_agents, state.snapshot)
         ending_state, settlement_results = settle_decisions(

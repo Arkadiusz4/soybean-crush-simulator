@@ -14,7 +14,7 @@ from soybean_sim.agents import (
 )
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 
-from .models import MarketState, SettlementOutcome, SettlementResult
+from ._models import MarketState, SettlementOutcome, SettlementResult
 
 _InventoryKey = tuple[Region, Commodity]
 

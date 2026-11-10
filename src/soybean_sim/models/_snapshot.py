@@ -5,7 +5,7 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .market import CommodityPrice, Inventory
+from ._market import CommodityPrice, Inventory
 
 
 class MarketSnapshot(BaseModel):

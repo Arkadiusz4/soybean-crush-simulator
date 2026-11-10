@@ -14,8 +14,9 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from soybean_sim.models import Commodity, CommodityPrice
 
-from . import mappings, parsing
-from .parsing import WorldBankDataError
+from . import _mappings as mappings
+from . import _parsing as parsing
+from ._parsing import WorldBankDataError
 
 _PriceKey = tuple[date, Commodity]
 _Observations = dict[_PriceKey, parsing.ParsedPrice]

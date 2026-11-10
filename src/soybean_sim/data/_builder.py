@@ -11,7 +11,7 @@ from soybean_sim.models import (
     SimulationInput,
 )
 
-from . import inventory, selection
+from . import _inventory, _selection
 
 
 def build_simulation_input(
@@ -28,7 +28,7 @@ def build_simulation_input(
     Both periods are explicit and independent. Beginning stocks stay in tonnes
     at the marketing-year start, without adjustment to the selected price month.
     """
-    selected_balances, selected_prices = selection.select_market_data(
+    selected_balances, selected_prices = _selection.select_market_data(
         balances,
         prices,
         marketing_year=marketing_year,
@@ -37,7 +37,7 @@ def build_simulation_input(
         commodities=commodities,
     )
 
-    inventories = inventory.build_initial_inventories(selected_balances)
+    inventories = _inventory.build_initial_inventories(selected_balances)
 
     return SimulationInput(
         balances=selected_balances,

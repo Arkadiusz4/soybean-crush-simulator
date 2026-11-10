@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from soybean_sim.models import Commodity, MarketSnapshot, NonNegativeTonnes
 
-from .models import AgentDecision, AgentIdentity, AgentType, DecisionAction
+from ._models import AgentDecision, AgentIdentity, AgentType, DecisionAction
 
 _PositiveFinite = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
 _Fraction = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)]

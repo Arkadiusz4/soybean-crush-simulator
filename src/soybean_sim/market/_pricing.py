@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from soybean_sim.models import Commodity, Region
 
-from .contracts import MarketPressure, RegionalPrice
+from ._contracts import MarketPressure, RegionalPrice
 
 _NonNegativeFinite = Annotated[float, Field(strict=True, ge=0, allow_inf_nan=False)]
 _PositiveFinite = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
