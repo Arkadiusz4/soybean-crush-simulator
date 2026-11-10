@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from datetime import date
 
-from soybean_sim.agents._base import Agent as AgentImplementation
-
 from soybean_sim.agents import Agent, AgentDecision, AgentIdentity, AgentType
+from soybean_sim.agents._base import Agent as AgentImplementation
 from soybean_sim.models import Commodity, CommodityPrice, MarketSnapshot, Region
 
 
