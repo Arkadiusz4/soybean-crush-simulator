@@ -25,7 +25,15 @@ class FlowSettlementError(ValueError):
 def settle_monthly_flows(
     state: MarketState, flows: Iterable[MarketFlow]
 ) -> MarketState:
-    """Return updated inventories, preserving prices, month, and input models."""
+    """Return updated inventories, preserving prices, month, and input models.
+
+    Args:
+        state (MarketState): Current market state before flow settlement.
+        flows (Iterable[MarketFlow]): Monthly external flows to apply.
+
+    Returns:
+        MarketState: Market state with updated inventories.
+    """
     initial = _validate_state(state)
     starting = {
         (stock.region, stock.commodity): stock.quantity_tonnes
@@ -60,7 +68,14 @@ def settle_monthly_flows(
 
 
 def _validate_state(state: MarketState) -> MarketState:
-    """Revalidate the snapshot and inventory uniqueness."""
+    """Revalidate the snapshot and inventory uniqueness.
+
+    Args:
+        state (MarketState): Candidate market state to revalidate.
+
+    Returns:
+        MarketState: Revalidated market state.
+    """
     if not isinstance(state, MarketState):
         raise FlowSettlementError("state must be a MarketState")
     try:
@@ -72,7 +87,17 @@ def _validate_state(state: MarketState) -> MarketState:
 def _validated_flows(
     flows: Iterable[MarketFlow], month: date, starting: dict[_InventoryKey, float]
 ) -> tuple[MarketFlow, ...]:
-    """Validate flow data, timing, unique keys, and stock coverage."""
+    """Validate flow data, timing, unique keys, and stock coverage.
+
+    Args:
+        flows (Iterable[MarketFlow]): Candidate monthly flows.
+        month (date): Expected first-of-month date for all flows.
+        starting (dict[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+
+    Returns:
+        tuple[MarketFlow, ...]: Validated unique flows for the month.
+    """
     seen: set[_FlowKey] = set()
     validated_flows: list[MarketFlow] = []
     for flow in flows:
@@ -108,7 +133,15 @@ def _validated_flows(
 
 
 def _physical_changes(flows: tuple[MarketFlow, ...]) -> dict[_InventoryKey, float]:
-    """Select soybean supply and meal/oil consumption."""
+    """Select soybean supply and meal/oil consumption.
+
+    Args:
+        flows (tuple[MarketFlow, ...]): Validated monthly flows.
+
+    Returns:
+        dict[tuple[Region, Commodity], float]: Signed inventory changes by region and
+            commodity.
+    """
     changes: dict[_InventoryKey, float] = {}
     for flow in flows:
         if flow.flow_type == MarketFlowType.SUPPLY:
@@ -126,7 +159,16 @@ def _physical_changes(flows: tuple[MarketFlow, ...]) -> dict[_InventoryKey, floa
 
 
 def _ending_quantity(starting: float, change: float, context: str) -> float:
-    """Calculate finite, nonnegative ending stock."""
+    """Calculate finite, nonnegative ending stock.
+
+    Args:
+        starting (float): Starting inventory quantity in tonnes.
+        change (float): Signed inventory change in tonnes.
+        context (str): Label used in insufficient-stock error messages.
+
+    Returns:
+        float: Ending inventory quantity in tonnes.
+    """
     if change < 0 and -change > starting:
         raise FlowSettlementError(
             f"Insufficient inventory for {context}: "

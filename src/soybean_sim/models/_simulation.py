@@ -12,6 +12,12 @@ class SimulationInput(BaseModel):
 
     Collections are nonempty and immutable. Records must be unique and prices share
     one month; matching coverage and marketing-year alignment are not checked.
+
+    Args:
+        balances (tuple[MarketBalance, ...]): Nonempty annual regional balances.
+        prices (tuple[CommodityPrice, ...]): Nonempty monthly reference prices sharing
+            one month.
+        inventories (tuple[Inventory, ...]): Nonempty initial regional stocks.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -22,7 +28,11 @@ class SimulationInput(BaseModel):
 
     @model_validator(mode="after")
     def initial_records_are_unambiguous(self) -> Self:
-        """Check record uniqueness and a shared month for all initial prices."""
+        """Check record uniqueness and a shared month for all initial prices.
+
+        Returns:
+            Self: The validated simulation input instance.
+        """
         balance_keys = [(item.region, item.commodity) for item in self.balances]
         if len(balance_keys) != len(set(balance_keys)):
             raise ValueError("balances must be unique by region and commodity")

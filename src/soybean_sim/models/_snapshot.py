@@ -13,6 +13,12 @@ class MarketSnapshot(BaseModel):
 
     Prices are not regional transaction prices. Missing inventory entries do not
     imply zero stock; annual balances and monthly flow estimates are excluded.
+
+    Args:
+        month (date): First calendar day of the observation month.
+        prices (tuple[CommodityPrice, ...]): Nonempty global reference prices for the
+            month.
+        inventories (tuple[Inventory, ...]): Regional stocks observed for the month.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -24,14 +30,25 @@ class MarketSnapshot(BaseModel):
     @field_validator("month")
     @classmethod
     def month_starts_on_first_day(cls, month: date) -> date:
-        """Require the same first-of-month date representation as commodity prices."""
+        """Require the same first-of-month date representation as commodity prices.
+
+        Args:
+            month (date): Candidate month date to validate.
+
+        Returns:
+            date: The same date when it falls on the first day.
+        """
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
         return month
 
     @model_validator(mode="after")
     def observations_are_unambiguous(self) -> Self:
-        """Check price uniqueness and timing, and regional inventory uniqueness."""
+        """Check price uniqueness and timing, and regional inventory uniqueness.
+
+        Returns:
+            Self: The validated snapshot instance.
+        """
         commodities = [price.commodity for price in self.prices]
         if len(commodities) != len(set(commodities)):
             raise ValueError("prices must be unique by commodity")

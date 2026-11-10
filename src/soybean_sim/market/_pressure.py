@@ -13,6 +13,13 @@ class MarketPressure(BaseModel):
 
     These are the market quantities used by the future price dynamics model.
     Their derivation is defined separately; this contract calculates no price.
+
+    Args:
+        month (date): First calendar day of the pressure month.
+        region (Region): Geographic region for the signals.
+        commodity (Commodity): Commodity whose supply and demand are recorded.
+        supply_tonnes (NonNegativeTonnes): Supply signal in tonnes.
+        demand_tonnes (NonNegativeTonnes): Demand signal in tonnes.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -26,7 +33,14 @@ class MarketPressure(BaseModel):
     @field_validator("month")
     @classmethod
     def month_starts_on_first_day(cls, month: date) -> date:
-        """Require a calendar month represented by its first day."""
+        """Require a calendar month represented by its first day.
+
+        Args:
+            month (date): Candidate month date to validate.
+
+        Returns:
+            date: The same date when it falls on the first day.
+        """
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
 

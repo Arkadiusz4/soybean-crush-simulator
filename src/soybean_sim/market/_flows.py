@@ -27,6 +27,12 @@ class MonthlyFlowConfig(BaseModel):
 
     Weights are modeling assumptions, not observed monthly USDA quantities or
     region-specific harvest calendars. Each series sums to one within 1e-9.
+
+    Args:
+        supply_weights (tuple[float, ...]): Twelve nonnegative supply shares summing to
+            one.
+        consumption_weights (tuple[float, ...]): Twelve nonnegative consumption shares
+            summing to one.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
@@ -37,7 +43,14 @@ class MonthlyFlowConfig(BaseModel):
     @field_validator("supply_weights", "consumption_weights")
     @classmethod
     def weights_sum_to_one(cls, weights: tuple[float, ...]) -> tuple[float, ...]:
-        """Require a full annual allocation, allowing only rounding-scale residuals."""
+        """Require a full annual allocation, allowing only rounding-scale residuals.
+
+        Args:
+            weights (tuple[float, ...]): Candidate twelve-month weight series.
+
+        Returns:
+            tuple[float, ...]: The same weights when they sum to one within tolerance.
+        """
         if not math.isclose(sum(weights), 1, rel_tol=0, abs_tol=_WEIGHT_SUM_TOLERANCE):
             raise ValueError(
                 f"monthly weights must sum to 1 within {_WEIGHT_SUM_TOLERANCE:g}"
@@ -63,6 +76,14 @@ def generate_monthly_flows(
     avoid counting crushing inputs twice. No non-crush consumption is inferred.
     The source year is not aligned to the calendar month; callers select it.
     Empty input returns an empty tuple, and source balances remain unchanged.
+
+    Args:
+        balances (Iterable[MarketBalance]): Annual market balances to allocate.
+        month (date): First calendar day selecting the month's weights.
+        config (MonthlyFlowConfig): January-to-December supply and consumption weights.
+
+    Returns:
+        tuple[MarketFlow, ...]: Flows sorted by region, commodity, and type.
     """
     validated_config = _validate_request(month, config)
     selected_balances = _unique_balances(balances)
@@ -78,7 +99,15 @@ def generate_monthly_flows(
 
 
 def _validate_request(month: date, config: MonthlyFlowConfig) -> MonthlyFlowConfig:
-    """Require an explicit calendar month and revalidate supplied allocation weights."""
+    """Require an explicit calendar month and revalidate supplied allocation weights.
+
+    Args:
+        month (date): First calendar day of the requested month.
+        config (MonthlyFlowConfig): Allocation weights to revalidate.
+
+    Returns:
+        MonthlyFlowConfig: Revalidated monthly flow configuration.
+    """
     if type(month) is not date or month.day != 1:
         raise MarketFlowError("month must be a date on the first day of a month")
 
@@ -91,7 +120,14 @@ def _validate_request(month: date, config: MonthlyFlowConfig) -> MonthlyFlowConf
 
 
 def _unique_balances(balances: Iterable[MarketBalance]) -> tuple[MarketBalance, ...]:
-    """Validate annual records, collapse equal duplicates, and require a single year."""
+    """Validate annual records, collapse equal duplicates, and require a single year.
+
+    Args:
+        balances (Iterable[MarketBalance]): Candidate annual balance records.
+
+    Returns:
+        tuple[MarketBalance, ...]: Deduplicated balances for one marketing year.
+    """
     selected: dict[_BalanceKey, MarketBalance] = {}
     years: set[str] = set()
 
@@ -126,7 +162,16 @@ def _unique_balances(balances: Iterable[MarketBalance]) -> tuple[MarketBalance, 
 def _balance_flows(
     balance: MarketBalance, month: date, config: MonthlyFlowConfig
 ) -> tuple[MarketFlow, ...]:
-    """Allocate observed production and eligible consumption, validating the results."""
+    """Allocate observed production and eligible consumption, validating the results.
+
+    Args:
+        balance (MarketBalance): Single annual balance being allocated.
+        month (date): First calendar day selecting the month's weights.
+        config (MonthlyFlowConfig): Validated supply and consumption weights.
+
+    Returns:
+        tuple[MarketFlow, ...]: Monthly flows derived from the balance.
+    """
     month_index = month.month - 1
     allocations = [
         (

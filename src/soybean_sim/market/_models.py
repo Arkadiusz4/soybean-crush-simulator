@@ -14,7 +14,11 @@ _QUANTITY_ABS_TOLERANCE_TONNES: Final = 1e-9
 
 
 class MarketState(BaseModel):
-    """Hold one frozen snapshot as the current month, prices, and regional stocks."""
+    """Hold one frozen snapshot as the current month, prices, and regional stocks.
+
+    Args:
+        snapshot (MarketSnapshot): Current-month market observations.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -22,7 +26,14 @@ class MarketState(BaseModel):
 
     @classmethod
     def from_snapshot(cls, snapshot: MarketSnapshot) -> Self:
-        """Validate initial observations and their nested prices and stocks."""
+        """Validate initial observations and their nested prices and stocks.
+
+        Args:
+            snapshot (MarketSnapshot): Snapshot used to construct market state.
+
+        Returns:
+            Self: Validated market state wrapping the snapshot.
+        """
         validated = MarketSnapshot.model_validate(snapshot.model_dump())
         return cls(snapshot=validated)
 
@@ -39,6 +50,13 @@ class SettlementResult(BaseModel):
 
     Crush settlement may execute partly or not at all. Trading is always deferred.
     Quantity accounting uses relative tolerance 1e-12 and absolute tolerance 1e-9 t.
+
+    Args:
+        decision (AgentDecision): Original agent intention being settled.
+        requested_tonnes (NonNegativeTonnes): Requested input quantity in tonnes.
+        executed_tonnes (NonNegativeTonnes): Executed input quantity in tonnes.
+        unfulfilled_tonnes (NonNegativeTonnes): Unfulfilled remainder in tonnes.
+        outcome (SettlementOutcome): Settlement classification for the decision.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -51,7 +69,11 @@ class SettlementResult(BaseModel):
 
     @model_validator(mode="after")
     def quantities_account_for_request(self) -> Self:
-        """Preserve the request and prevent overexecution or lost quantities."""
+        """Preserve the request and prevent overexecution or lost quantities.
+
+        Returns:
+            Self: The validated settlement result instance.
+        """
         if self.requested_tonnes != self.decision.quantity_tonnes:
             raise ValueError(
                 "requested_tonnes must equal the original decision quantity"
@@ -74,7 +96,11 @@ class SettlementResult(BaseModel):
 
     @model_validator(mode="after")
     def outcome_matches_action(self) -> Self:
-        """Prevent trading intentions from being reported as executed trades."""
+        """Prevent trading intentions from being reported as executed trades.
+
+        Returns:
+            Self: The validated settlement result instance.
+        """
         if self.decision.action == DecisionAction.CRUSH:
             if self.outcome != SettlementOutcome.CRUSH_SETTLED:
                 raise ValueError("CRUSH results must have outcome crush_settled")
