@@ -13,13 +13,14 @@ class TradeExecution(BaseModel):
 
     Quantity is executed metric tonnes, rather than an unfulfilled intention.
 
-    @param month: First calendar day of the trade month (``date``).
-    @param seller_agent_id: Unique ID of the selling agent (``NonEmptyString``).
-    @param buyer_agent_id: Unique ID of the buying agent (``NonEmptyString``).
-    @param source_region: Region supplying the commodity (``Region``).
-    @param destination_region: Region receiving the commodity (``Region``).
-    @param commodity: Commodity transferred by the trade (``Commodity``).
-    @param quantity_tonnes: Positive executed quantity in tonnes (``float``).
+    Args:
+        month (date): First calendar day of the trade month.
+        seller_agent_id (NonEmptyString): Unique ID of the selling agent.
+        buyer_agent_id (NonEmptyString): Unique ID of the buying agent.
+        source_region (Region): Region supplying the commodity.
+        destination_region (Region): Region receiving the commodity.
+        commodity (Commodity): Commodity transferred by the trade.
+        quantity_tonnes (float): Positive executed quantity in tonnes.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -37,8 +38,11 @@ class TradeExecution(BaseModel):
     def month_starts_on_first_day(cls, month: date) -> date:
         """Require a calendar month represented by its first day.
 
-        @param month: Candidate month date to validate (``date``).
-        @return: The same date when it falls on the first day (``date``).
+        Args:
+            month (date): Candidate month date to validate.
+
+        Returns:
+            date: The same date when it falls on the first day.
         """
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
@@ -49,7 +53,8 @@ class TradeExecution(BaseModel):
     def participants_and_regions_differ(self) -> Self:
         """Require distinct participants and an actual interregional route.
 
-        @return: The validated trade execution instance (``Self``).
+        Returns:
+            Self: The validated trade execution instance.
         """
         if self.seller_agent_id == self.buyer_agent_id:
             raise ValueError("seller_agent_id and buyer_agent_id must differ")

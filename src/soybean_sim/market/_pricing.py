@@ -24,13 +24,11 @@ class PriceDynamicsConfig(BaseModel):
     These are simulation assumptions, not empirically calibrated parameters.
     Price floors use USD/tonne; the supply floor uses metric tonnes.
 
-    @param price_sensitivity: Nonnegative response to supply/demand imbalance
-        (``float``).
-    @param maximum_monthly_change: Fractional monthly change cap in ``[0, 1)``
-        (``float``).
-    @param minimum_price_usd_per_tonne: Positive USD/tonne price floor (``float``).
-    @param supply_floor_tonnes: Positive tonne floor used in imbalance scaling
-        (``float``).
+    Args:
+        price_sensitivity (float): Nonnegative response to supply/demand imbalance.
+        maximum_monthly_change (float): Fractional monthly change cap in [0, 1).
+        minimum_price_usd_per_tonne (float): Positive USD/tonne price floor.
+        supply_floor_tonnes (float): Positive tonne floor used in imbalance scaling.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
@@ -58,13 +56,13 @@ def update_regional_prices(
     fractional change, then apply the price floor. The floor takes precedence
     over the change cap. Empty prices and pressures return an empty tuple.
 
-    @param current_prices: Current-month regional prices
-        (``Iterable[RegionalPrice]``).
-    @param pressures: Matching supply/demand pressures (``Iterable[MarketPressure]``).
-    @param config: Sensitivity, change cap, and floor settings
-        (``PriceDynamicsConfig``).
-    @return: Next-month prices sorted by region and commodity
-        (``tuple[RegionalPrice, ...]``).
+    Args:
+        current_prices (Iterable[RegionalPrice]): Current-month regional prices.
+        pressures (Iterable[MarketPressure]): Matching supply/demand pressures.
+        config (PriceDynamicsConfig): Sensitivity, change cap, and floor settings.
+
+    Returns:
+        tuple[RegionalPrice, ...]: Next-month prices sorted by region and commodity.
     """
     validated_config = _validate_config(config)
     prices_by_key = _index_records(current_prices, RegionalPrice)
@@ -90,8 +88,11 @@ def update_regional_prices(
 def _validate_config(config: PriceDynamicsConfig) -> PriceDynamicsConfig:
     """Revalidate configuration copies and report invalid settings as domain errors.
 
-    @param config: Candidate price dynamics settings (``PriceDynamicsConfig``).
-    @return: Revalidated configuration (``PriceDynamicsConfig``).
+    Args:
+        config (PriceDynamicsConfig): Candidate price dynamics settings.
+
+    Returns:
+        PriceDynamicsConfig: Revalidated configuration.
     """
     if not isinstance(config, PriceDynamicsConfig):
         raise PriceDynamicsError("config must be a PriceDynamicsConfig")
@@ -108,10 +109,13 @@ def _index_records[Record: (RegionalPrice, MarketPressure)](
 ) -> dict[_PriceKey, Record]:
     """Revalidate records and reject every repeated month/region/commodity key.
 
-    @param records: Candidate price or pressure records (``Iterable[Record]``).
-    @param record_type: Expected record class (``type[Record]``).
-    @return: Records indexed by month, region, and commodity
-        (``dict[tuple[date, Region, Commodity], Record]``).
+    Args:
+        records (Iterable[Record]): Candidate price or pressure records.
+        record_type (type[Record]): Expected record class.
+
+    Returns:
+        dict[tuple[date, Region, Commodity], Record]: Records indexed by month, region,
+            and commodity.
     """
     indexed: dict[_PriceKey, Record] = {}
     for record in records:
@@ -139,12 +143,14 @@ def _matching_month(
 ) -> date | None:
     """Require one price month and exact pressure coverage, including empty inputs.
 
-    @param prices: Indexed current prices
-        (``dict[tuple[date, Region, Commodity], RegionalPrice]``).
-    @param pressures: Indexed pressures
-        (``dict[tuple[date, Region, Commodity], MarketPressure]``).
-    @return: Shared month when both maps are nonempty, otherwise ``None``
-        (``date | None``).
+    Args:
+        prices (dict[tuple[date, Region, Commodity], RegionalPrice]): Indexed current
+            prices.
+        pressures (dict[tuple[date, Region, Commodity], MarketPressure]): Indexed
+            pressures.
+
+    Returns:
+        date | None: Shared month when both maps are nonempty, otherwise None.
     """
     months = {month for month, _, _ in prices}
     if len(months) > 1:
@@ -164,8 +170,11 @@ def _matching_month(
 def _next_month(month: date) -> date:
     """Advance a validated month locally to avoid depending on the simulation engine.
 
-    @param month: First calendar day of the current month (``date``).
-    @return: First calendar day of the following month (``date``).
+    Args:
+        month (date): First calendar day of the current month.
+
+    Returns:
+        date: First calendar day of the following month.
     """
     if month.month == DECEMBER:
         if month.year == date.max.year:
@@ -180,11 +189,13 @@ def _updated_price(
 ) -> float:
     """Bound the supply/demand response and reject overflow in the resulting price.
 
-    @param price: Current-month regional price (``RegionalPrice``).
-    @param pressure: Matching supply and demand signals (``MarketPressure``).
-    @param config: Sensitivity, change cap, and floor settings
-        (``PriceDynamicsConfig``).
-    @return: Next-month USD per tonne price (``float``).
+    Args:
+        price (RegionalPrice): Current-month regional price.
+        pressure (MarketPressure): Matching supply and demand signals.
+        config (PriceDynamicsConfig): Sensitivity, change cap, and floor settings.
+
+    Returns:
+        float: Next-month USD per tonne price.
     """
     raw_change = 0.0
     if config.price_sensitivity > 0:

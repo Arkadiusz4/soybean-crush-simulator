@@ -28,9 +28,12 @@ def settle_matched_trades(
     fund outgoing sales. Identical records are rejected. Empty trades are a no-op.
     Nonempty batches return inventories sorted by region and commodity.
 
-    @param state: Current market state before trade settlement (``MarketState``).
-    @param trades: Matched interregional executions (``Iterable[TradeExecution]``).
-    @return: Market state with transferred inventories (``MarketState``).
+    Args:
+        state (MarketState): Current market state before trade settlement.
+        trades (Iterable[TradeExecution]): Matched interregional executions.
+
+    Returns:
+        MarketState: Market state with transferred inventories.
     """
     initial = _validate_state(state)
     starting = {
@@ -56,8 +59,11 @@ def settle_matched_trades(
 def _validate_state(state: MarketState) -> MarketState:
     """Revalidate nested prices and unique inventory records before settlement.
 
-    @param state: Candidate market state to revalidate (``MarketState``).
-    @return: Revalidated market state (``MarketState``).
+    Args:
+        state (MarketState): Candidate market state to revalidate.
+
+    Returns:
+        MarketState: Revalidated market state.
     """
     if not isinstance(state, MarketState):
         raise TradeSettlementError("state must be a MarketState")
@@ -70,9 +76,12 @@ def _validate_state(state: MarketState) -> MarketState:
 def _validate_trade(trade: TradeExecution, month: date) -> TradeExecution:
     """Require a valid matched execution belonging to the state's snapshot month.
 
-    @param trade: Candidate matched trade (``TradeExecution``).
-    @param month: Expected first-of-month date from market state (``date``).
-    @return: Revalidated trade for the snapshot month (``TradeExecution``).
+    Args:
+        trade (TradeExecution): Candidate matched trade.
+        month (date): Expected first-of-month date from market state.
+
+    Returns:
+        TradeExecution: Revalidated trade for the snapshot month.
     """
     if not isinstance(trade, TradeExecution):
         raise TradeSettlementError("trades must contain TradeExecution records")
@@ -96,12 +105,15 @@ def _aggregate_transfers(
 ) -> tuple[_Transfers, _Transfers]:
     """Validate unique trades and existing endpoints, collecting both transfer sides.
 
-    @param trades: Matched executions to aggregate (``Iterable[TradeExecution]``).
-    @param month: Expected first-of-month date from market state (``date``).
-    @param starting: Starting inventory quantities by region and commodity
-        (``dict[tuple[Region, Commodity], float]``).
-    @return: Outgoing and incoming transfer lists by inventory key
-        (``tuple[_Transfers, _Transfers]``).
+    Args:
+        trades (Iterable[TradeExecution]): Matched executions to aggregate.
+        month (date): Expected first-of-month date from market state.
+        starting (dict[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+
+    Returns:
+        tuple[_Transfers, _Transfers]: Outgoing and incoming transfer lists by
+            inventory key.
     """
     seen: set[TradeExecution] = set()
     outgoing: _Transfers = {}
@@ -139,9 +151,12 @@ def _aggregate_transfers(
 def _sum_quantities(quantities: Iterable[float], context: str) -> float:
     """Sum stocks or transfers accurately, rejecting overflow and negative results.
 
-    @param quantities: Values to sum in tonnes (``Iterable[float]``).
-    @param context: Label used in overflow or invalid-result errors (``str``).
-    @return: Finite nonnegative total in tonnes (``float``).
+    Args:
+        quantities (Iterable[float]): Values to sum in tonnes.
+        context (str): Label used in overflow or invalid-result errors.
+
+    Returns:
+        float: Finite nonnegative total in tonnes.
     """
     try:
         total = math.fsum(quantities)
@@ -157,10 +172,12 @@ def _sum_quantities(quantities: Iterable[float], context: str) -> float:
 def _transfer_totals(transfers: _Transfers) -> dict[_InventoryKey, float]:
     """Aggregate transfers in a fixed order for reproducible floating-point sums.
 
-    @param transfers: Per-key lists of transfer quantities
-        (``dict[tuple[Region, Commodity], list[float]]``).
-    @return: Totals by region and commodity
-        (``dict[tuple[Region, Commodity], float]``).
+    Args:
+        transfers (dict[tuple[Region, Commodity], list[float]]): Per-key lists of
+            transfer quantities.
+
+    Returns:
+        dict[tuple[Region, Commodity], float]: Totals by region and commodity.
     """
     return {
         (region, commodity): _sum_quantities(
@@ -175,14 +192,16 @@ def _updated_inventories(
 ) -> tuple[Inventory, ...]:
     """Check total sales against starting stocks, then construct sorted inventories.
 
-    @param starting: Starting inventory quantities by region and commodity
-        (``dict[tuple[Region, Commodity], float]``).
-    @param outgoing: Outgoing transfer quantities by inventory key
-        (``dict[tuple[Region, Commodity], list[float]]``).
-    @param incoming: Incoming transfer quantities by inventory key
-        (``dict[tuple[Region, Commodity], list[float]]``).
-    @return: Ending inventories sorted by region and commodity
-        (``tuple[Inventory, ...]``).
+    Args:
+        starting (dict[tuple[Region, Commodity], float]): Starting inventory quantities
+            by region and commodity.
+        outgoing (dict[tuple[Region, Commodity], list[float]]): Outgoing transfer
+            quantities by inventory key.
+        incoming (dict[tuple[Region, Commodity], list[float]]): Incoming transfer
+            quantities by inventory key.
+
+    Returns:
+        tuple[Inventory, ...]: Ending inventories sorted by region and commodity.
     """
     exported = _transfer_totals(outgoing)
     for (region, commodity), quantity in exported.items():

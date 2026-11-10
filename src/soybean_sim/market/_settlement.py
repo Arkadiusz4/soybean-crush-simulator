@@ -35,13 +35,15 @@ def settle_decisions(
     Each crusher ID may submit one CRUSH request. Trade intentions remain deferred;
     all work is local, so a failure leaves the supplied state unchanged.
 
-    @param state: Current market state before decision settlement (``MarketState``).
-    @param decisions: Agent intentions for the current month
-        (``Iterable[AgentDecision]``).
-    @param crusher_configs: Processing configs keyed by crusher agent ID
-        (``Mapping[str, CrusherConfig]``).
-    @return: Updated market state and ordered settlement results
-        (``tuple[MarketState, tuple[SettlementResult, ...]]``).
+    Args:
+        state (MarketState): Current market state before decision settlement.
+        decisions (Iterable[AgentDecision]): Agent intentions for the current month.
+        crusher_configs (Mapping[str, CrusherConfig]): Processing configs keyed by
+            crusher agent ID.
+
+    Returns:
+        tuple[MarketState, tuple[SettlementResult, ...]]: Updated market state and
+            ordered settlement results.
     """
     quantities = {
         (stock.region, stock.commodity): stock.quantity_tonnes
@@ -82,14 +84,17 @@ def _prepare_decisions(
 ) -> tuple[tuple[AgentDecision, ...], dict[str, CrusherConfig]]:
     """Validate the entire batch and referenced configs before physical processing.
 
-    @param snapshot: Current-month market observations (``MarketSnapshot``).
-    @param decisions: Candidate agent decisions (``Iterable[AgentDecision]``).
-    @param crusher_configs: Processing configs keyed by crusher agent ID
-        (``Mapping[str, CrusherConfig]``).
-    @param quantities: Starting inventory quantities by region and commodity
-        (``Mapping[tuple[Region, Commodity], float]``).
-    @return: Ordered decisions and resolved crusher configs
-        (``tuple[tuple[AgentDecision, ...], dict[str, CrusherConfig]]``).
+    Args:
+        snapshot (MarketSnapshot): Current-month market observations.
+        decisions (Iterable[AgentDecision]): Candidate agent decisions.
+        crusher_configs (Mapping[str, CrusherConfig]): Processing configs keyed by
+            crusher agent ID.
+        quantities (Mapping[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+
+    Returns:
+        tuple[tuple[AgentDecision, ...], dict[str, CrusherConfig]]: Ordered decisions
+            and resolved crusher configs.
     """
     submitted = tuple(decisions)
     identities: dict[str, AgentIdentity] = {}
@@ -129,13 +134,15 @@ def _validate_decision(
 ) -> None:
     """Check decision validity, month, identity consistency, and market references.
 
-    @param decision: Candidate agent decision (``AgentDecision``).
-    @param snapshot: Current-month market observations (``MarketSnapshot``).
-    @param quantities: Starting inventory quantities by region and commodity
-        (``Mapping[tuple[Region, Commodity], float]``).
-    @param identities: Previously seen agent identities by ID
-        (``dict[str, AgentIdentity]``).
-    @return: ``None``.
+    Args:
+        decision (AgentDecision): Candidate agent decision.
+        snapshot (MarketSnapshot): Current-month market observations.
+        quantities (Mapping[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+        identities (dict[str, AgentIdentity]): Previously seen agent identities by ID.
+
+    Returns:
+        None: No value is returned.
     """
     try:
         AgentDecision.model_validate(decision.model_dump())
@@ -170,11 +177,14 @@ def _validate_market_references(
 ) -> None:
     """Require known regions and commodities without assuming trade stock ownership.
 
-    @param decision: Decision whose market references are checked (``AgentDecision``).
-    @param snapshot: Current-month market observations (``MarketSnapshot``).
-    @param quantities: Starting inventory quantities by region and commodity
-        (``Mapping[tuple[Region, Commodity], float]``).
-    @return: ``None``.
+    Args:
+        decision (AgentDecision): Decision whose market references are checked.
+        snapshot (MarketSnapshot): Current-month market observations.
+        quantities (Mapping[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+
+    Returns:
+        None: No value is returned.
     """
     known_regions = {region for region, _ in quantities}
     if decision.agent.region not in known_regions:
@@ -198,11 +208,13 @@ def _processing_config(
 ) -> CrusherConfig:
     """Resolve and revalidate the crusher config using its existing yield validators.
 
-    @param decision: Crush decision whose agent ID selects the config
-        (``AgentDecision``).
-    @param crusher_configs: Processing configs keyed by crusher agent ID
-        (``Mapping[str, CrusherConfig]``).
-    @return: Revalidated crusher processing configuration (``CrusherConfig``).
+    Args:
+        decision (AgentDecision): Crush decision whose agent ID selects the config.
+        crusher_configs (Mapping[str, CrusherConfig]): Processing configs keyed by
+            crusher agent ID.
+
+    Returns:
+        CrusherConfig: Revalidated crusher processing configuration.
     """
     agent_id = decision.agent.agent_id
     config = crusher_configs.get(agent_id)
@@ -226,11 +238,14 @@ def _require_crush_inventories(
 ) -> None:
     """Require explicit soybean, meal, and oil records even for zero input requests.
 
-    @param decision: Crush decision whose region must have full commodity coverage
-        (``AgentDecision``).
-    @param quantities: Starting inventory quantities by region and commodity
-        (``Mapping[tuple[Region, Commodity], float]``).
-    @return: ``None``.
+    Args:
+        decision (AgentDecision): Crush decision whose region must have full commodity
+            coverage.
+        quantities (Mapping[tuple[Region, Commodity], float]): Starting inventory
+            quantities by region and commodity.
+
+    Returns:
+        None: No value is returned.
     """
     for commodity in Commodity:
         if (decision.agent.region, commodity) not in quantities:
@@ -247,11 +262,14 @@ def _settle_crush(
 ) -> SettlementResult:
     """Consume bounded input and add configured outputs to a batch-local stock map.
 
-    @param decision: Crush intention to execute (``AgentDecision``).
-    @param config: Yield fractions for meal and oil output (``CrusherConfig``).
-    @param quantities: Mutable inventory quantities updated in place
-        (``dict[tuple[Region, Commodity], float]``).
-    @return: Settlement result for the crush decision (``SettlementResult``).
+    Args:
+        decision (AgentDecision): Crush intention to execute.
+        config (CrusherConfig): Yield fractions for meal and oil output.
+        quantities (dict[tuple[Region, Commodity], float]): Mutable inventory
+            quantities updated in place.
+
+    Returns:
+        SettlementResult: Settlement result for the crush decision.
     """
     region = decision.agent.region
     soybean_key = (region, Commodity.SOYBEANS)
@@ -286,8 +304,11 @@ def _settle_crush(
 def _defer_trade(decision: AgentDecision) -> SettlementResult:
     """Report a purchase or sale as wholly unfulfilled without changing inventory.
 
-    @param decision: Trade intention left unmatched (``AgentDecision``).
-    @return: Deferred trade settlement result (``SettlementResult``).
+    Args:
+        decision (AgentDecision): Trade intention left unmatched.
+
+    Returns:
+        SettlementResult: Deferred trade settlement result.
     """
     return SettlementResult(
         decision=decision,

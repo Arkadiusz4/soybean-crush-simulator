@@ -29,11 +29,13 @@ def match_interregional_trades(
     Prioritize commodity, then seller/buyer region and ID. Sellers share starting
     stock; purchases do not replenish it. Skip CRUSH and zero-quantity matches.
 
-    @param decisions: Agent intentions for the matching month
-        (``Iterable[AgentDecision]``).
-    @param inventories: Starting regional stocks (``Iterable[Inventory]``).
-    @param month: First calendar day of the matching month (``date``).
-    @return: Matched interregional executions (``tuple[TradeExecution, ...]``).
+    Args:
+        decisions (Iterable[AgentDecision]): Agent intentions for the matching month.
+        inventories (Iterable[Inventory]): Starting regional stocks.
+        month (date): First calendar day of the matching month.
+
+    Returns:
+        tuple[TradeExecution, ...]: Matched interregional executions.
     """
     if type(month) is not date or month.day != 1:
         raise TradeMatchingError("month must be a date on the first day of a month")
@@ -57,9 +59,12 @@ def match_interregional_trades(
 def _validate_decision(decision: AgentDecision, month: date) -> AgentDecision:
     """Revalidate nested decision data and require the requested matching month.
 
-    @param decision: Candidate agent decision (``AgentDecision``).
-    @param month: Expected first-of-month matching date (``date``).
-    @return: Revalidated decision for the requested month (``AgentDecision``).
+    Args:
+        decision (AgentDecision): Candidate agent decision.
+        month (date): Expected first-of-month matching date.
+
+    Returns:
+        AgentDecision: Revalidated decision for the requested month.
     """
     if not isinstance(decision, AgentDecision):
         raise TradeMatchingError("decisions must contain AgentDecision records")
@@ -82,9 +87,12 @@ def _trade_intentions(
 ) -> tuple[AgentDecision, ...]:
     """Require stable identities and unique trade keys, excluding validated crushing.
 
-    @param decisions: Candidate agent decisions (``Iterable[AgentDecision]``).
-    @param month: Expected first-of-month matching date (``date``).
-    @return: Unique trade intentions for the month (``tuple[AgentDecision, ...]``).
+    Args:
+        decisions (Iterable[AgentDecision]): Candidate agent decisions.
+        month (date): Expected first-of-month matching date.
+
+    Returns:
+        tuple[AgentDecision, ...]: Unique trade intentions for the month.
     """
     identities: dict[str, AgentIdentity] = {}
     seen: set[_IntentionKey] = set()
@@ -120,10 +128,12 @@ def _inventory_availability(
 ) -> dict[_InventoryKey, float]:
     """Validate unique regional stocks and copy quantities into local counters.
 
-    @param inventories: Candidate regional inventory records
-        (``Iterable[Inventory]``).
-    @return: Mutable available quantities by region and commodity
-        (``dict[tuple[Region, Commodity], float]``).
+    Args:
+        inventories (Iterable[Inventory]): Candidate regional inventory records.
+
+    Returns:
+        dict[tuple[Region, Commodity], float]: Mutable available quantities by region
+            and commodity.
     """
     available: dict[_InventoryKey, float] = {}
     for inventory in inventories:
@@ -153,11 +163,14 @@ def _match_intentions(
 ) -> tuple[TradeExecution, ...]:
     """Allocate ordered offers to eligible buyers using batch-local counters.
 
-    @param sellers: Ordered sale offers (``list[AgentDecision]``).
-    @param buyers: Ordered purchase requests (``list[AgentDecision]``).
-    @param available: Mutable starting stock counters by region and commodity
-        (``dict[tuple[Region, Commodity], float]``).
-    @return: Matched interregional executions (``tuple[TradeExecution, ...]``).
+    Args:
+        sellers (list[AgentDecision]): Ordered sale offers.
+        buyers (list[AgentDecision]): Ordered purchase requests.
+        available (dict[tuple[Region, Commodity], float]): Mutable starting stock
+            counters by region and commodity.
+
+    Returns:
+        tuple[TradeExecution, ...]: Matched interregional executions.
     """
     remaining_demand = [buyer.quantity_tonnes for buyer in buyers]
     trades: list[TradeExecution] = []

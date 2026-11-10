@@ -26,23 +26,24 @@ class MarketBalance(BaseModel):
     None means unobserved; only crush may be omitted. Preserve the source year label
     without allocating flows to months or enforcing exact accounting balance.
 
-    @param region: Geographic region for the balance (``Region``).
-    @param commodity: Commodity covered by the balance (``Commodity``).
-    @param marketing_year: Source marketing-year label (``NonEmptyString``).
-    @param production_tonnes: Annual production in tonnes, or ``None`` if unobserved
-        (``NonNegativeTonnes | None``).
-    @param imports_tonnes: Annual imports in tonnes, or ``None`` if unobserved
-        (``NonNegativeTonnes | None``).
-    @param exports_tonnes: Annual exports in tonnes, or ``None`` if unobserved
-        (``NonNegativeTonnes | None``).
-    @param domestic_consumption_tonnes: Annual domestic consumption in tonnes, or
-        ``None`` if unobserved (``NonNegativeTonnes | None``).
-    @param beginning_stocks_tonnes: Beginning stocks in tonnes, or ``None`` if
-        unobserved (``NonNegativeTonnes | None``).
-    @param ending_stocks_tonnes: Ending stocks in tonnes, or ``None`` if unobserved
-        (``NonNegativeTonnes | None``).
-    @param crush_tonnes: Soybean crush input in tonnes, or ``None`` if omitted
-        (``NonNegativeTonnes | None``).
+    Args:
+        region (Region): Geographic region for the balance.
+        commodity (Commodity): Commodity covered by the balance.
+        marketing_year (NonEmptyString): Source marketing-year label.
+        production_tonnes (NonNegativeTonnes | None): Annual production in tonnes, or
+            None if unobserved.
+        imports_tonnes (NonNegativeTonnes | None): Annual imports in tonnes, or None if
+            unobserved.
+        exports_tonnes (NonNegativeTonnes | None): Annual exports in tonnes, or None if
+            unobserved.
+        domestic_consumption_tonnes (NonNegativeTonnes | None): Annual domestic
+            consumption in tonnes, or None if unobserved.
+        beginning_stocks_tonnes (NonNegativeTonnes | None): Beginning stocks in tonnes,
+            or None if unobserved.
+        ending_stocks_tonnes (NonNegativeTonnes | None): Ending stocks in tonnes, or
+            None if unobserved.
+        crush_tonnes (NonNegativeTonnes | None): Soybean crush input in tonnes, or None
+            if omitted.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -62,7 +63,8 @@ class MarketBalance(BaseModel):
     def crush_applies_to_soybeans(self) -> Self:
         """Check that crush measures soybean input and appears only on soybeans.
 
-        @return: The validated balance instance (``Self``).
+        Returns:
+            Self: The validated balance instance.
         """
         if self.crush_tonnes is not None and self.commodity != Commodity.SOYBEANS:
             raise ValueError("crush_tonnes applies only to soybeans")
@@ -75,10 +77,11 @@ class CommodityPrice(BaseModel):
     The month is its first calendar day. The source label is required; prices are
     not region-specific, and records are immutable.
 
-    @param commodity: Commodity whose reference price is recorded (``Commodity``).
-    @param month: First calendar day of the priced month (``date``).
-    @param price_usd_per_tonne: Positive finite USD per tonne price (``float``).
-    @param data_source: Required source label for the price (``NonEmptyString``).
+    Args:
+        commodity (Commodity): Commodity whose reference price is recorded.
+        month (date): First calendar day of the priced month.
+        price_usd_per_tonne (float): Positive finite USD per tonne price.
+        data_source (NonEmptyString): Required source label for the price.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -93,8 +96,11 @@ class CommodityPrice(BaseModel):
     def month_starts_on_first_day(cls, month: date) -> date:
         """Check that the date represents the first day of its month.
 
-        @param month: Candidate month date to validate (``date``).
-        @return: The same date when it falls on the first day (``date``).
+        Args:
+            month (date): Candidate month date to validate.
+
+        Returns:
+            date: The same date when it falls on the first day.
         """
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
@@ -106,9 +112,10 @@ class Inventory(BaseModel):
 
     Quantity must be finite and nonnegative; zero is known empty stock, not missing.
 
-    @param region: Geographic region holding the stock (``Region``).
-    @param commodity: Commodity held in inventory (``Commodity``).
-    @param quantity_tonnes: Finite nonnegative stock in tonnes (``NonNegativeTonnes``).
+    Args:
+        region (Region): Geographic region holding the stock.
+        commodity (Commodity): Commodity held in inventory.
+        quantity_tonnes (NonNegativeTonnes): Finite nonnegative stock in tonnes.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
