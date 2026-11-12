@@ -18,7 +18,8 @@ their regions represented by inventory records. Every crusher needs a validated
 
 For each month:
 
-1. Give every registered agent the same frozen starting snapshot in ID order.
+1. Give agents starting inventories and global or regional price observations in
+   ID order.
 2. Collect decisions, preserving each agent's own decision order. Require each
    decision to name its registered agent. The existing settlement validates months.
 3. Call `settle_decisions()` once with the complete batch. Its allocation policy
@@ -31,6 +32,37 @@ The engine never changes inventories directly. Empty agent collections still
 produce the requested monthly history. Agent and settlement errors propagate;
 no partial simulation result is returned and the supplied initial state is unchanged.
 Custom agents must honor the deterministic, stable-identity `Agent` contract.
+
+## Regional price observations
+
+`run_simulation(..., regional_prices=None)` preserves the original shared global
+snapshot behavior. Supply an initial-month `RegionalPrice` series to give each
+agent the prices for its own region:
+
+```python
+result = run_simulation(
+    initial_state,
+    agents,
+    crusher_configs=configs,
+    months=3,
+    regional_prices=regional_prices,
+)
+```
+
+`initialize_regional_prices()` can create baseline regional prices from global
+observations. The engine validates the complete supplied series before any agent
+decides, including records for unused regions. Every agent region needs all
+snapshot commodities; regions without agents need no coverage. Invalid data
+propagates `RegionalPriceError` without returning partial results.
+
+Each agent receives a temporary `snapshot_for_region()` view with the current
+month and **all** regional inventories. Its `CommodityPrice` records use the
+`simulated_regional` source label. Stored market states, monthly histories, and
+settlement retain global reference prices.
+
+Regional values stay constant across months; only their observation dates advance
+using the existing calendar utility. Supplied records remain unchanged. Dynamic
+pricing, physical monthly flows, and trade execution are not integrated here.
 
 Frozen `MonthlyResult` contains `month`, `starting_state`, `decisions`,
 `settlement_results`, and `ending_state`. It checks dates, unchanged monthly
