@@ -36,6 +36,8 @@ as a reference, with our [project conventions](docs/style-guide.md) for naming,
 constants, module privacy, concise docstrings, types, function readability,
 exceptions, and comments. Keep the established import policy. Ruff enforces
 naming and Google-style docstrings alongside formatting; Pyright checks types.
+Document function parameters and return values, including private helpers, using
+the [docstring conventions](docs/style-guide.md#docstrings).
 Run `just check` before submitting changes.
 
 ## Quality checks
