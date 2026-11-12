@@ -71,12 +71,34 @@ Avoid a global constants module containing unrelated values.
 
 ## Docstrings
 
-Explain what a function does and any non-obvious units, inputs, or results.
-Keep docstrings shorter than the implementation: small helpers usually need
-one sentence. Follow Google docstring layout; use `Args` and `Returns` only when
-they add useful information. Keep exception details in the relevant API
-documentation rather than repeating them in every docstring. Source modules
-have a short description of their responsibility; test modules need none.
+Every function and method, including private helpers, must have a Google-style
+docstring describing its purpose, parameters, and return value:
+
+- Start with a short summary of what the function does.
+- Include an `Args` section describing each parameter's type and meaning, with
+  units where relevant. Omit `self` and `cls`; omit the section for no arguments.
+- Include a `Returns` section describing the result's type and meaning, including
+  `None` for functions without a return value. Generators use `Yields` instead.
+- Keep descriptions concise and proportional to the function. Avoid repeating
+  implementation steps or adding lengthy explanations to small helpers.
+- Omit `Raises` sections; keep exception details in the relevant API documentation.
+
+For example, the docstring for `initialize_regional_prices` follows this layout:
+
+```python
+"""Copy global price values to each requested region.
+
+Args:
+    snapshot (MarketSnapshot): Global snapshot with all three commodity prices.
+    regions (Iterable[Region]): Nonempty collection of unique regions.
+
+Returns:
+    tuple[RegionalPrice, ...]: Initial prices sorted by region and commodity.
+"""
+```
+
+Source modules have a short description of their responsibility; test modules
+need none. Module and class summaries do not need return-value sections.
 
 ## Types, readability, and errors
 
