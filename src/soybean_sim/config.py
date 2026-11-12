@@ -24,6 +24,14 @@ class SimulationConfig(BaseModel):
     """Immutable run settings with a positive duration and unique regions.
 
     All settings are required. The scenario name is a label, not a runnable scenario.
+
+    Args:
+        duration_steps (int): Positive number of monthly simulation steps.
+        random_seed (int): Nonnegative seed stored for future stochastic behavior.
+        regions (tuple[Region, ...]): Nonempty collection of unique supported region
+            identifiers.
+        scenario_name (str): Nonempty scenario label with surrounding whitespace
+            removed.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -38,14 +46,29 @@ class SimulationConfig(BaseModel):
     @field_validator("regions")
     @classmethod
     def regions_are_unique(cls, regions: tuple[Region, ...]) -> tuple[Region, ...]:
-        """Check that each selected region appears only once."""
+        """Check that each selected region appears only once.
+
+        Args:
+            regions (tuple[Region, ...]): Selected region identifiers to check for
+                duplicates.
+
+        Returns:
+            tuple[Region, ...]: The same region tuple when every identifier is unique.
+        """
         if len(regions) != len(set(regions)):
             raise ValueError("regions must not contain duplicates")
         return regions
 
 
 def load_config(path: str | Path) -> SimulationConfig:
-    """Load a local UTF-8 YAML mapping into validated, immutable run settings."""
+    """Load a local UTF-8 YAML mapping into validated, immutable run settings.
+
+    Args:
+        path (str | Path): Path to a local UTF-8 YAML mapping of required run settings.
+
+    Returns:
+        SimulationConfig: Validated, immutable simulation configuration.
+    """
     config_path = Path(path)
     try:
         contents = config_path.read_text(encoding="utf-8")

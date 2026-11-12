@@ -14,7 +14,17 @@ from . import _calendar
 
 
 class MonthlyResult(BaseModel):
-    """Record monthly starting state, decisions, settlement, and ending state."""
+    """Record monthly starting state, decisions, settlement, and ending state.
+
+    Args:
+        month (date): First calendar day of the completed simulation month.
+        starting_state (MarketState): Shared market state observed before agents decide.
+        decisions (tuple[AgentDecision, ...]): Collected agent intentions for the month.
+        settlement_results (tuple[SettlementResult, ...]): Settlement records covering
+            every decision exactly once.
+        ending_state (MarketState): Market state after settlement, dated to the same
+            month.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -26,7 +36,11 @@ class MonthlyResult(BaseModel):
 
     @model_validator(mode="after")
     def monthly_records_are_consistent(self) -> Self:
-        """Require matching state months, decision months, and settlement coverage."""
+        """Require matching state months, decision months, and settlement coverage.
+
+        Returns:
+            Self: The validated monthly result instance.
+        """
         if (
             self.starting_state.snapshot.month != self.month
             or self.ending_state.snapshot.month != self.month
@@ -50,7 +64,16 @@ class MonthlyResult(BaseModel):
 
 
 class SimulationResult(BaseModel):
-    """Group a nonempty monthly history with its initial and last completed states."""
+    """Group a nonempty monthly history with its initial and last completed states.
+
+    Args:
+        initial_state (MarketState): Market state at the start of the first simulated
+            month.
+        monthly_results (tuple[MonthlyResult, ...]): Nonempty sequence of connected
+            monthly results with carried stocks and constant prices.
+        final_state (MarketState): Ending state of the last completed month, without an
+            extra calendar advance.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -60,7 +83,11 @@ class SimulationResult(BaseModel):
 
     @model_validator(mode="after")
     def history_is_continuous(self) -> Self:
-        """Require connected months, carried stocks, and constant prices."""
+        """Require connected months, carried stocks, and constant prices.
+
+        Returns:
+            Self: The validated simulation result instance.
+        """
         if self.monthly_results[0].starting_state != self.initial_state:
             raise ValueError("initial_state must match the first starting state")
 

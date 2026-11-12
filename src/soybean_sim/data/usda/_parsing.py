@@ -14,7 +14,13 @@ _YEAR_LABEL_PATTERN: Final = re.compile(r"[0-9]{4}")
 
 
 class ParsedQuantity(NamedTuple):
-    """Pair an exact source decimal in 1000 MT with float tonnes; blanks become None."""
+    """Pair an exact source decimal in 1000 MT with float tonnes; blanks become None.
+
+    Args:
+        source_value (Decimal | None): Exact quantity in source units of 1000 MT, or
+            None for a blank cell.
+        tonnes (float | None): Converted metric tonnes, or None for a blank cell.
+    """
 
     source_value: Decimal | None
     tonnes: float | None
@@ -26,6 +32,17 @@ def resolve_year_bounds(
     """Resolve one four-digit marketing-year label or inclusive integer year bounds.
 
     Use either a single year or ordered range bounds, defaulting to 1 and 9999.
+
+    Args:
+        marketing_year (str | None): Single four-digit year label, mutually exclusive
+            with range bounds.
+        start_year (int | None): Inclusive lower year bound, or None to use the minimum
+            supported year.
+        end_year (int | None): Inclusive upper year bound, or None to use the maximum
+            supported year.
+
+    Returns:
+        tuple[int, int]: Inclusive lower and upper marketing-year bounds.
     """
     if marketing_year is not None:
         if start_year is not None or end_year is not None:
@@ -56,7 +73,15 @@ def resolve_year_bounds(
 
 
 def parse_marketing_year(value: str, source_context: str) -> str:
-    """Validate and return the unchanged nonzero four-digit marketing-year label."""
+    """Validate and return the unchanged nonzero four-digit marketing-year label.
+
+    Args:
+        value (str): Source marketing-year label to validate.
+        source_context (str): File and row label used in validation errors.
+
+    Returns:
+        str: Unchanged nonzero four-digit marketing-year label.
+    """
     if not _YEAR_LABEL_PATTERN.fullmatch(value) or int(value) == 0:
         raise USDAObservationError(f"{source_context}: invalid Market_Year {value!r}")
 
@@ -68,6 +93,14 @@ def _parse_quantity(value_text: str, source_context: str) -> ParsedQuantity:
 
     Blank cells return two None values. Quantities must be finite and nonnegative,
     remaining representable after conversion without turning nonzero values to zero.
+
+    Args:
+        value_text (str): Trimmed quantity cell in source units of 1000 MT.
+        source_context (str): File and row label used in validation errors.
+
+    Returns:
+        ParsedQuantity: Exact source quantity and converted metric tonnes; both fields
+            are None for a blank cell.
     """
     if not value_text:
         return ParsedQuantity(source_value=None, tonnes=None)
@@ -105,6 +138,15 @@ def parse_observation(row: dict[str, str], source_context: str) -> ParsedQuantit
     Expect trimmed cells with supported codes already selected by the loader.
     Only unit 08 / (1000 MT) is accepted. Return source decimals and metric tonnes,
     keeping blanks missing.
+
+    Args:
+        row (dict[str, str]): Trimmed CSV cells with supported commodity, region, and
+            attribute codes.
+        source_context (str): File and row label used in validation errors.
+
+    Returns:
+        ParsedQuantity: Validated source quantity and metric tonnes, preserving missing
+            values.
     """
     _, commodity_description = mappings.COMMODITIES[row["Commodity_Code"]]
     _, country_name = mappings.REGIONS[row["Country_Code"]]

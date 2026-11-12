@@ -8,7 +8,14 @@ from soybean_sim.models import CommodityPrice, MarketSnapshot
 
 
 def next_month(month: date) -> date:
-    """Advance an explicit first-of-month date, including December year transitions."""
+    """Advance an explicit first-of-month date, including December year transitions.
+
+    Args:
+        month (date): First calendar day of the current month.
+
+    Returns:
+        date: First calendar day of the following month.
+    """
     if type(month) is not date or month.day != 1:
         raise ValueError("month must be a date on the first day of a month")
 
@@ -22,7 +29,16 @@ def next_month(month: date) -> date:
 
 
 def advance_market_month(state: MarketState) -> MarketState:
-    """Carry ending stocks into next month's newly dated, unchanged reference prices."""
+    """Carry ending stocks into next month's newly dated, unchanged reference prices.
+
+    Args:
+        state (MarketState): Completed month's market state with stocks and global
+            reference prices.
+
+    Returns:
+        MarketState: Next-month state carrying the same stocks, price values, and source
+            labels with newly dated price records.
+    """
     month = next_month(state.snapshot.month)
 
     return MarketState(

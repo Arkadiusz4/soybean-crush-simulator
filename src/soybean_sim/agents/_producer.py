@@ -14,7 +14,22 @@ _SupplyFraction = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=
 
 
 class ProducerConfig(BaseModel):
-    """Set a USD/tonne price baseline, ordered bands, and stock offer fractions."""
+    """Set a USD/tonne price baseline, ordered bands, and stock offer fractions.
+
+    Args:
+        reference_price_usd_per_tonne (float): Positive soybean reference price in USD
+            per metric tonne.
+        low_price_ratio (float): Market/reference price ratio below which the low supply
+            fraction applies.
+        high_price_ratio (float): Market/reference price ratio at which the high supply
+            fraction begins.
+        low_supply_fraction (float): Share of observed regional stock offered below the
+            low price threshold.
+        normal_supply_fraction (float): Share of observed regional stock offered between
+            the price thresholds.
+        high_supply_fraction (float): Share of observed regional stock offered at or
+            above the high threshold.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
@@ -27,7 +42,11 @@ class ProducerConfig(BaseModel):
 
     @model_validator(mode="after")
     def response_bands_are_ordered(self) -> Self:
-        """Require increasing price thresholds and nondecreasing supply fractions."""
+        """Require increasing price thresholds and nondecreasing supply fractions.
+
+        Returns:
+            Self: The validated producer configuration instance.
+        """
         if self.high_price_ratio <= self.low_price_ratio:
             raise ValueError("high_price_ratio must be greater than low_price_ratio")
 
@@ -47,18 +66,37 @@ class ProducerDecisionError(ValueError):
 
 @dataclass(frozen=True)
 class Producer:
-    """Represent aggregate regional producers offering existing soybean inventory."""
+    """Represent aggregate regional producers offering existing soybean inventory.
+
+    Args:
+        identity (AgentIdentity): Identity with the producer role and home region.
+        config (ProducerConfig): Reference price, price bands, and stock offer
+            fractions.
+    """
 
     identity: AgentIdentity
     config: ProducerConfig
 
     def __post_init__(self) -> None:
-        """Require the supplied identity to identify a producer agent."""
+        """Require the supplied identity to identify a producer agent.
+
+        Returns:
+            None: No value is returned.
+        """
         if self.identity.agent_type != AgentType.PRODUCER:
             raise ValueError("Producer identity must have agent_type='producer'")
 
     def decide(self, snapshot: MarketSnapshot) -> tuple[AgentDecision, ...]:
-        """Offer a price-dependent share of regional stock without executing a sale."""
+        """Offer a price-dependent share of regional stock without executing a sale.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global soybean price and regional
+                soybean stock.
+
+        Returns:
+            tuple[AgentDecision, ...]: One regional soybean sale offer, or an empty
+                tuple when observed stock is zero.
+        """
         market_price = self._soybean_price(snapshot)
         available_soybeans = self._available_soybeans(snapshot)
         if available_soybeans == 0:
@@ -76,7 +114,14 @@ class Producer:
         )
 
     def _soybean_price(self, snapshot: MarketSnapshot) -> float:
-        """Read the global soybean price, reporting a missing observation explicitly."""
+        """Read the global soybean price, reporting a missing observation explicitly.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global reference prices.
+
+        Returns:
+            float: Global soybean reference price in USD per metric tonne.
+        """
         for price in snapshot.prices:
             if price.commodity == Commodity.SOYBEANS:
                 return price.price_usd_per_tonne
@@ -86,7 +131,15 @@ class Producer:
         )
 
     def _available_soybeans(self, snapshot: MarketSnapshot) -> float:
-        """Read this region's soybean tonnes, distinguishing known zero from missing."""
+        """Read this region's soybean tonnes, distinguishing known zero from missing.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month regional inventory observations.
+
+        Returns:
+            float: Observed soybean stock in this producer's region, including known
+                zero.
+        """
         for stock in snapshot.inventories:
             if (
                 stock.region == self.identity.region
@@ -99,7 +152,16 @@ class Producer:
         )
 
     def _supply_fraction(self, market_price: float) -> float:
-        """Choose a supply fraction from the market/reference price ratio."""
+        """Choose a supply fraction from the market/reference price ratio.
+
+        Args:
+            market_price (float): Global soybean reference price in USD per metric
+                tonne.
+
+        Returns:
+            float: Configured share of regional stock for the applicable price-ratio
+                band.
+        """
         price_ratio = market_price / self.config.reference_price_usd_per_tonne
         if price_ratio < self.config.low_price_ratio:
             return self.config.low_supply_fraction

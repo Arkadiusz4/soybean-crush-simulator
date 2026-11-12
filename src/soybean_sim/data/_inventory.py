@@ -18,6 +18,14 @@ def build_initial_inventories(
     region/commodity pairs are invalid. Empty input returns an empty tuple.
     Marketing-year-start stocks are not adjusted to a calendar simulation month.
     Source balances remain unchanged.
+
+    Args:
+        balances (Iterable[MarketBalance]): Annual balances with known beginning stocks
+            and unique region/commodity pairs.
+
+    Returns:
+        tuple[Inventory, ...]: Initial stocks in tonnes sorted by region and commodity,
+            or an empty tuple for empty input.
     """
     inventories: dict[tuple[Region, Commodity], Inventory] = {}
     for balance in balances:

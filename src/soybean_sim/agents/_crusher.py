@@ -20,7 +20,29 @@ _UtilizationFraction = Annotated[
 
 
 class CrusherConfig(BaseModel):
-    """Set input capacity, processing costs, simplified yields, and margin bands."""
+    """Set input capacity, processing costs, simplified yields, and margin bands.
+
+    Args:
+        monthly_capacity_tonnes (float): Positive monthly soybean processing capacity in
+            input tonnes.
+        processing_cost_usd_per_tonne (float): Nonnegative processing cost in USD per
+            tonne of soybean input.
+        meal_yield_fraction (float): Meal output tonnes per input tonne; defaults to
+            0.80.
+        oil_yield_fraction (float): Oil output tonnes per input tonne; defaults to 0.20.
+        low_margin_threshold_usd_per_tonne (float): Net margin at or below which
+            processing stops, in USD per input tonne.
+        high_margin_threshold_usd_per_tonne (float): Net margin separating low and
+            medium utilization, in USD per input tonne.
+        full_utilization_threshold_usd_per_tonne (float): Net margin at which high
+            utilization begins, in USD per input tonne.
+        low_utilization_fraction (float): Capacity fraction above the low margin
+            threshold and below the high threshold.
+        medium_utilization_fraction (float): Capacity fraction from the high threshold
+            up to the full-utilization threshold.
+        high_utilization_fraction (float): Capacity fraction at or above the
+            full-utilization threshold.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
@@ -37,7 +59,11 @@ class CrusherConfig(BaseModel):
 
     @model_validator(mode="after")
     def yields_conserve_input(self) -> Self:
-        """Require meal and oil yields to sum to one within float tolerance."""
+        """Require meal and oil yields to sum to one within float tolerance.
+
+        Returns:
+            Self: The validated crusher configuration instance.
+        """
         if not math.isclose(
             self.meal_yield_fraction + self.oil_yield_fraction,
             1,
@@ -53,7 +79,11 @@ class CrusherConfig(BaseModel):
 
     @model_validator(mode="after")
     def margin_thresholds_are_ordered(self) -> Self:
-        """Require strictly increasing margin thresholds in USD per input tonne."""
+        """Require strictly increasing margin thresholds in USD per input tonne.
+
+        Returns:
+            Self: The validated crusher configuration instance.
+        """
         if not (
             self.low_margin_threshold_usd_per_tonne
             < self.high_margin_threshold_usd_per_tonne
@@ -65,7 +95,11 @@ class CrusherConfig(BaseModel):
 
     @model_validator(mode="after")
     def utilization_fractions_are_ordered(self) -> Self:
-        """Require capacity use to be nondecreasing across active margin bands."""
+        """Require capacity use to be nondecreasing across active margin bands.
+
+        Returns:
+            Self: The validated crusher configuration instance.
+        """
         if not (
             self.low_utilization_fraction
             <= self.medium_utilization_fraction
@@ -82,18 +116,37 @@ class CrusherDecisionError(ValueError):
 
 @dataclass(frozen=True)
 class Crusher:
-    """Represent aggregate regional processing capacity without owning shared stocks."""
+    """Represent aggregate regional processing capacity without owning shared stocks.
+
+    Args:
+        identity (AgentIdentity): Identity with the crusher role and home region.
+        config (CrusherConfig): Processing capacity, costs, yields, and margin-response
+            settings.
+    """
 
     identity: AgentIdentity
     config: CrusherConfig
 
     def __post_init__(self) -> None:
-        """Require the supplied identity to identify a crusher agent."""
+        """Require the supplied identity to identify a crusher agent.
+
+        Returns:
+            None: No value is returned.
+        """
         if self.identity.agent_type != AgentType.CRUSHER:
             raise ValueError("Crusher identity must have agent_type='crusher'")
 
     def decide(self, snapshot: MarketSnapshot) -> tuple[AgentDecision, ...]:
-        """Request soybean input within capacity and regional stock bounds."""
+        """Request soybean input within capacity and regional stock bounds.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month prices for all three commodities
+                and regional soybean stock.
+
+        Returns:
+            tuple[AgentDecision, ...]: One soybean CRUSH request in input tonnes, or an
+                empty tuple when the requested quantity is zero.
+        """
         net_margin = self._net_crush_margin(snapshot)
         regional_stock = self._regional_soybean_inventory(snapshot)
         desired_tonnes = self.config.monthly_capacity_tonnes * self._utilization(
@@ -115,7 +168,15 @@ class Crusher:
         )
 
     def _commodity_price(self, snapshot: MarketSnapshot, commodity: Commodity) -> float:
-        """Read a required global reference price or identify missing data."""
+        """Read a required global reference price or identify missing data.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month global reference prices.
+            commodity (Commodity): Commodity whose reference price is required.
+
+        Returns:
+            float: Required reference price in USD per metric tonne.
+        """
         for price in snapshot.prices:
             if price.commodity == commodity:
                 return price.price_usd_per_tonne
@@ -125,7 +186,15 @@ class Crusher:
         )
 
     def _net_crush_margin(self, snapshot: MarketSnapshot) -> float:
-        """Subtract soybean input and processing costs from weighted product revenue."""
+        """Subtract soybean input and processing costs from weighted product revenue.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month soybean, meal, and oil reference
+                prices.
+
+        Returns:
+            float: Net processing margin in USD per tonne of soybean input.
+        """
         soybean_price = self._commodity_price(snapshot, Commodity.SOYBEANS)
         meal_price = self._commodity_price(snapshot, Commodity.SOYBEAN_MEAL)
         oil_price = self._commodity_price(snapshot, Commodity.SOYBEAN_OIL)
@@ -145,7 +214,14 @@ class Crusher:
         return net_margin
 
     def _regional_soybean_inventory(self, snapshot: MarketSnapshot) -> float:
-        """Read regional soybean tonnes as a shared request ceiling."""
+        """Read regional soybean tonnes as a shared request ceiling.
+
+        Args:
+            snapshot (MarketSnapshot): Current-month regional inventory observations.
+
+        Returns:
+            float: Observed soybean stock in this crusher's region, in metric tonnes.
+        """
         for stock in snapshot.inventories:
             if (
                 stock.region == self.identity.region
@@ -158,7 +234,15 @@ class Crusher:
         )
 
     def _utilization(self, net_margin: float) -> float:
-        """Choose capacity use from configured margin bands with explicit boundaries."""
+        """Choose capacity use from configured margin bands with explicit boundaries.
+
+        Args:
+            net_margin (float): Net processing margin in USD per tonne of soybean input.
+
+        Returns:
+            float: Configured capacity fraction, or zero at or below the low margin
+                threshold.
+        """
         if net_margin <= self.config.low_margin_threshold_usd_per_tonne:
             return 0
 

@@ -26,7 +26,13 @@ class DecisionAction(StrEnum):
 
 
 class AgentIdentity(BaseModel):
-    """Identify an agent by a caller-assigned unique ID, role, and home region."""
+    """Identify an agent by a caller-assigned unique ID, role, and home region.
+
+    Args:
+        agent_id (NonEmptyString): Caller-assigned unique identifier for the agent.
+        agent_type (AgentType): Role determining the agent's supported behavior.
+        region (Region): Home region represented by the agent.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -40,6 +46,14 @@ class AgentDecision(BaseModel):
 
     Quantity is requested metric tonnes; zero requests no operation. Crush
     quantity measures soybean input, not meal or oil output.
+
+    Args:
+        agent (AgentIdentity): Identity of the agent proposing the action.
+        month (date): First calendar day of the decision month.
+        action (DecisionAction): Proposed sale, purchase, or crushing action.
+        commodity (Commodity): Commodity requested or offered by the action.
+        quantity_tonnes (NonNegativeTonnes): Requested metric tonnes; crushing measures
+            soybean input.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -53,14 +67,25 @@ class AgentDecision(BaseModel):
     @field_validator("month")
     @classmethod
     def month_starts_on_first_day(cls, month: date) -> date:
-        """Require a normalized monthly date without inferring a reporting period."""
+        """Require a normalized monthly date without inferring a reporting period.
+
+        Args:
+            month (date): Candidate month date to validate.
+
+        Returns:
+            date: The same date when it falls on the first day.
+        """
         if month.day != 1:
             raise ValueError("month must be the first day of a month (YYYY-MM-01)")
         return month
 
     @model_validator(mode="after")
     def crush_requests_soybean_input(self) -> Self:
-        """Keep crushing requests consistent with the existing soybean-input model."""
+        """Keep crushing requests consistent with the existing soybean-input model.
+
+        Returns:
+            Self: The validated agent decision instance.
+        """
         if self.action == DecisionAction.CRUSH and self.commodity != Commodity.SOYBEANS:
             raise ValueError("crush decisions apply only to soybeans")
         return self
