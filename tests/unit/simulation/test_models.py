@@ -3,9 +3,9 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from soybean_sim.agents import Agent, CrusherConfig
-from soybean_sim.market import MarketState
-from soybean_sim.models import CommodityPrice, MarketSnapshot
+from soybean_sim.agents import Agent, CrusherConfig, DecisionAction
+from soybean_sim.market import MarketFlow, MarketFlowType, MarketState, TradeExecution
+from soybean_sim.models import Commodity, CommodityPrice, MarketSnapshot, Region
 from soybean_sim.simulation import MonthlyResult, SimulationResult, run_simulation
 
 
@@ -142,4 +142,91 @@ def test_monthly_history_continuity(result: SimulationResult, defect: str) -> No
             initial_state=result.initial_state,
             monthly_results=(first, changed),
             final_state=changed.ending_state,
+        )
+
+
+def test_physical_mode_retains_only_crushing_settlement_results(
+    result: SimulationResult,
+) -> None:
+    """Distinguish physical trade intentions from legacy deferred settlements.
+
+    Args:
+        result: Legacy month containing crush and trade decisions.
+
+    Returns:
+        None: Confirms mode-specific coverage without weakening legacy validation.
+    """
+    monthly = result.monthly_results[0]
+    crushing = tuple(
+        item
+        for item in monthly.settlement_results
+        if item.decision.action == DecisionAction.CRUSH
+    )
+    physical = MonthlyResult.model_validate(
+        {**monthly.model_dump(), "physical_cycle": True, "settlement_results": crushing}
+    )
+    assert physical.decisions == monthly.decisions
+    assert physical.market_flows == physical.executed_trades == ()
+    assert MonthlyResult.model_validate_json(physical.model_dump_json()) == physical
+    with pytest.raises(ValidationError, match="cover every decision exactly once"):
+        MonthlyResult.model_validate(
+            {**monthly.model_dump(), "settlement_results": crushing}
+        )
+    with pytest.raises(
+        ValidationError, match="cover every CRUSH decision exactly once"
+    ):
+        MonthlyResult.model_validate({**monthly.model_dump(), "physical_cycle": True})
+    assert not monthly.physical_cycle
+    assert monthly.market_flows == monthly.executed_trades == ()
+
+
+@pytest.mark.parametrize("field", ["market_flows", "executed_trades"])
+def test_physical_activity_requires_mode_and_matching_month(
+    result: SimulationResult, field: str
+) -> None:
+    """Validate the temporal and mode semantics of new history fields.
+
+    Args:
+        result: Existing legacy history fixture.
+        field: Physical activity field to populate.
+
+    Returns:
+        None: Confirms legacy records cannot claim physical executions or flows.
+    """
+    monthly = result.monthly_results[0]
+    flow = MarketFlow(
+        month=monthly.month,
+        region=Region.BRAZIL,
+        commodity=Commodity.SOYBEANS,
+        flow_type=MarketFlowType.SUPPLY,
+        quantity_tonnes=10,
+    )
+    trade = TradeExecution(
+        month=monthly.month,
+        source_region=Region.BRAZIL,
+        destination_region=Region.UNITED_STATES,
+        seller_agent_id="seller",
+        buyer_agent_id="buyer",
+        commodity=Commodity.SOYBEANS,
+        quantity_tonnes=10,
+    )
+    record = flow if field == "market_flows" else trade
+    with pytest.raises(ValidationError, match="physical_cycle=True"):
+        MonthlyResult.model_validate({**monthly.model_dump(), field: (record,)})
+    physical = {
+        **monthly.model_dump(),
+        "physical_cycle": True,
+        "settlement_results": tuple(
+            item
+            for item in monthly.settlement_results
+            if item.decision.action == DecisionAction.CRUSH
+        ),
+    }
+    MonthlyResult.model_validate({**physical, field: (record,)})
+    with pytest.raises(ValidationError, match="must match the result month"):
+        MonthlyResult.model_validate(
+            {
+                **physical,
+                field: (record.model_copy(update={"month": date(2024, 1, 1)}),),
+            }
         )
