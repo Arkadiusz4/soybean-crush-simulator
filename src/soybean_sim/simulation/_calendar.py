@@ -3,7 +3,7 @@
 from calendar import DECEMBER, JANUARY
 from datetime import date
 
-from soybean_sim.market import MarketState
+from soybean_sim.market import MarketState, RegionalPrice
 from soybean_sim.models import CommodityPrice, MarketSnapshot
 
 
@@ -55,4 +55,26 @@ def advance_market_month(state: MarketState) -> MarketState:
             ),
             inventories=state.snapshot.inventories,
         )
+    )
+
+
+def advance_regional_prices(
+    prices: tuple[RegionalPrice, ...],
+) -> tuple[RegionalPrice, ...]:
+    """Advance regional observation dates while preserving values and ordering.
+
+    Args:
+        prices: Validated current-month regional series.
+
+    Returns:
+        Newly dated regional records for the next calendar month.
+    """
+    return tuple(
+        RegionalPrice(
+            month=next_month(price.month),
+            region=price.region,
+            commodity=price.commodity,
+            price_usd_per_tonne=price.price_usd_per_tonne,
+        )
+        for price in prices
     )

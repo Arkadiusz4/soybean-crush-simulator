@@ -12,7 +12,13 @@ from soybean_sim.agents import (
     Crusher,
     CrusherConfig,
 )
-from soybean_sim.market import MarketState, settle_decisions
+from soybean_sim.market import (
+    MarketState,
+    RegionalPrice,
+    settle_decisions,
+    snapshot_for_region,
+    validate_regional_prices,
+)
 from soybean_sim.models import MarketSnapshot, Region
 
 from . import _calendar
@@ -32,39 +38,47 @@ def run_simulation(
     *,
     crusher_configs: Mapping[str, CrusherConfig],
     months: int,
+    regional_prices: Iterable[RegionalPrice] | None = None,
 ) -> SimulationResult:
     """Run monthly decisions and settlement, preserving constant global prices.
 
-    Agents observe one shared starting snapshot in ascending ID order. Empty
-    registrations are valid. The final state belongs to the last completed month;
-    agent and settlement errors propagate without returning a partial history.
+    Agents decide in ascending ID order. Without regional prices they share the
+    global snapshot; otherwise each receives its region's price view with the same
+    inventories. Regional values stay constant while their dates advance.
 
     Args:
-        initial_state (MarketState): Market observations and inventories at the start of
-            the first month.
-        agents (Iterable[Agent]): Agents with unique IDs and stable identities in
-            represented regions.
-        crusher_configs (Mapping[str, CrusherConfig]): Validated processing settings
-            keyed by every registered crusher's ID.
-        months (int): Positive number of monthly steps within the supported calendar
-            range.
+        initial_state: Observations and inventories at the start of the first month.
+        agents: Agents with unique IDs and stable identities in represented regions.
+        crusher_configs: Processing settings keyed by each registered crusher's ID.
+        months: Positive step count within the supported calendar range.
+        regional_prices: Optional initial-month regional series covering every agent
+            region's commodities. Invalid regional data propagates its domain error.
 
     Returns:
-        SimulationResult: Initial state, complete monthly history, and the last
-            completed month's ending state.
+        Initial state, complete monthly history, and the last month's ending state.
+        Recorded market states retain global prices; agent views are temporary.
     """
     initial = MarketState.from_snapshot(initial_state.snapshot)
     _validate_duration(initial.snapshot.month, months)
     registered_agents, processing_configs = _prepare_agents(
         initial, agents, crusher_configs
     )
+    current_regional_prices = _prepare_regional_prices(
+        initial.snapshot, registered_agents, regional_prices
+    )
     state = initial
     history: list[MonthlyResult] = []
     for month_index in range(months):
         if month_index:
             state = _calendar.advance_market_month(state)
+            if current_regional_prices is not None:
+                current_regional_prices = _calendar.advance_regional_prices(
+                    current_regional_prices
+                )
 
-        decisions = _collect_decisions(registered_agents, state.snapshot)
+        decisions = _collect_decisions(
+            registered_agents, state.snapshot, current_regional_prices
+        )
         ending_state, settlement_results = settle_decisions(
             state, decisions, crusher_configs=processing_configs
         )
@@ -109,6 +123,31 @@ def _validate_duration(first_month: date, months: int) -> None:
         raise SimulationError(
             "requested duration exceeds the maximum supported calendar year"
         )
+
+
+def _prepare_regional_prices(
+    snapshot: MarketSnapshot,
+    registered_agents: tuple[_RegisteredAgent, ...],
+    regional_prices: Iterable[RegionalPrice] | None,
+) -> tuple[RegionalPrice, ...] | None:
+    """Validate the complete regional series and agent coverage before execution.
+
+    Args:
+        snapshot: Initial global observations.
+        registered_agents: Validated identity/agent pairs.
+        regional_prices: Optional caller-supplied regional observations.
+
+    Returns:
+        Sorted regional prices, or None for the original global-price behavior.
+    """
+    if regional_prices is None:
+        return None
+
+    validated = validate_regional_prices(snapshot, regional_prices)
+    for region in sorted({identity.region for identity, _ in registered_agents}):
+        snapshot_for_region(snapshot, validated, region)
+
+    return validated
 
 
 def _prepare_agents(
@@ -203,22 +242,28 @@ def _crusher_config(
 
 
 def _collect_decisions(
-    registered_agents: tuple[_RegisteredAgent, ...], snapshot: MarketSnapshot
+    registered_agents: tuple[_RegisteredAgent, ...],
+    snapshot: MarketSnapshot,
+    regional_prices: tuple[RegionalPrice, ...] | None = None,
 ) -> tuple[AgentDecision, ...]:
     """Collect ordered intentions and verify their registered attribution.
 
     Args:
-        registered_agents (tuple[_RegisteredAgent, ...]): Validated identity/agent pairs
-            in execution order.
-        snapshot (MarketSnapshot): Shared starting observation for the current month.
+        registered_agents: Validated identity/agent pairs in execution order.
+        snapshot: Global starting observations for the current month.
+        regional_prices: Current-month regional series, or None for global views.
 
     Returns:
-        tuple[AgentDecision, ...]: Agent-attributed intentions preserving registration
-            and per-agent decision order.
+        Agent intentions preserving registration and per-agent decision order.
     """
     decisions: list[AgentDecision] = []
     for identity, agent in registered_agents:
-        for decision in agent.decide(snapshot):
+        observation = (
+            snapshot
+            if regional_prices is None
+            else snapshot_for_region(snapshot, regional_prices, identity.region)
+        )
+        for decision in agent.decide(observation):
             if not isinstance(decision, AgentDecision):
                 raise SimulationError(
                     f"Agent {identity.agent_id!r} returned an invalid decision type"
