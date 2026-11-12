@@ -16,6 +16,7 @@ from ._regional_prices import (
     RegionalPriceError,
     initialize_regional_prices,
     snapshot_for_region,
+    validate_regional_prices,
 )
 from ._settlement import SettlementError, settle_decisions
 from ._trade_settlement import TradeSettlementError, settle_matched_trades
@@ -49,4 +50,5 @@ __all__ = [
     "settle_monthly_flows",
     "snapshot_for_region",
     "update_regional_prices",
+    "validate_regional_prices",
 ]

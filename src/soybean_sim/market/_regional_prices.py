@@ -17,6 +17,24 @@ class RegionalPriceError(ValueError):
     """Invalid regional price data or incomplete price coverage."""
 
 
+def validate_regional_prices(
+    snapshot: MarketSnapshot, regional_prices: Iterable[RegionalPrice]
+) -> tuple[RegionalPrice, ...]:
+    """Validate a regional series without requiring coverage for any region.
+
+    Args:
+        snapshot: Required observation month and global commodity coverage.
+        regional_prices: Candidate regional records, including an empty series.
+
+    Returns:
+        Revalidated prices sorted by region and commodity.
+    """
+    initial = _validate_snapshot(snapshot)
+    indexed = _index_prices(regional_prices, initial)
+
+    return tuple(indexed[key] for key in sorted(indexed))
+
+
 def initialize_regional_prices(
     snapshot: MarketSnapshot, regions: Iterable[Region]
 ) -> tuple[RegionalPrice, ...]:
