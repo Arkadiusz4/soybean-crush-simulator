@@ -16,7 +16,7 @@ unique agent IDs in ascending case-sensitive order. Identities must be valid and
 their regions represented by inventory records. Every crusher needs a validated
 `CrusherConfig` keyed by its ID, even if it later returns no decisions.
 
-For each month:
+With `monthly_flows=None` (the default), each month uses the legacy cycle:
 
 1. Give agents starting inventories and global or regional price observations in
    ID order.
@@ -32,6 +32,51 @@ The engine never changes inventories directly. Empty agent collections still
 produce the requested monthly history. Agent and settlement errors propagate;
 no partial simulation result is returned and the supplied initial state is unchanged.
 Custom agents must honor the deterministic, stable-identity `Agent` contract.
+
+## Physical monthly cycle
+
+Provide `monthly_flows` to opt into physical production, trading, and consumption.
+An explicitly empty iterable enables this mode with no external flows:
+
+```python
+result = run_simulation(
+    initial_state,
+    agents,
+    crusher_configs=configs,
+    months=3,
+    regional_prices=regional_prices,
+    monthly_flows=flows,
+)
+```
+
+The caller prepares flows separately; the engine does not load datasets or generate
+monthly allocations. The complete collection is materialized, revalidated, checked
+for duplicates and supported accounting, and grouped by month before execution.
+Every flow must fall within the run's period and reference an existing regional
+commodity inventory. Months without records are allowed.
+
+Each physical month follows this order:
+
+1. Open with the previous ending inventories and advance observation dates.
+2. Apply soybean SUPPLY. Meal/oil SUPPLY is validated reference data and adds no stock.
+3. Collect agent decisions using post-production inventories and global or regional
+   price views.
+4. Settle only CRUSH decisions, using the existing stock-limited processing policy.
+5. Match all trade intentions against post-crushing inventories, then settle the
+   matched transfers as one batch.
+6. Apply meal/oil CONSUMPTION against the resulting stocks, including imports.
+7. Record the ending state for the next month.
+
+Soybean consumption flows are rejected: crushing already accounts for soybean use.
+Incoming trades cannot fund sales within the same matching/settlement batch.
+Consumption shortages propagate `FlowSettlementError`; consumption is never reduced
+or funded through automatic imports. Availability is checked at the execution stage,
+so current-month crushing outputs and imports can satisfy product consumption.
+
+Crushing output is available to the matcher in the same month when a corresponding
+sale intention exists. Existing agents still decide before crushing; this order
+does not make them anticipate future outputs or create extra offers automatically.
+No stage failure returns a partial simulation result or changes the input state.
 
 ## Regional price observations
 
@@ -61,12 +106,22 @@ month and **all** regional inventories. Its `CommodityPrice` records use the
 settlement retain global reference prices.
 
 Regional values stay constant across months; only their observation dates advance
-using the existing calendar utility. Supplied records remain unchanged. Dynamic
-pricing, physical monthly flows, and trade execution are not integrated here.
+using the existing calendar utility. Supplied records remain unchanged. In physical
+mode, regional views include post-production inventories. Dynamic pricing remains
+outside the engine.
 
 Frozen `MonthlyResult` contains `month`, `starting_state`, `decisions`,
-`settlement_results`, and `ending_state`. It checks dates, unchanged monthly
-prices, and one settlement per decision. Frozen `SimulationResult` contains
+`settlement_results`, and `ending_state`. The starting state is the opening state
+before production; agent views in physical mode include that month's production.
+The additional fields default to `physical_cycle=False`, `market_flows=()`, and
+`executed_trades=()` for legacy callers. The mode flag distinguishes an explicitly
+empty physical cycle from legacy execution.
+
+Physical months retain every decision, every validated flow (including reference
+production), crushing settlement results only, and actually matched/settled trades.
+Unmatched trade intentions remain in `decisions` without deferred settlement
+records. Legacy months retain one settlement per decision as before. Both modes
+check dates and unchanged global price observations. Frozen `SimulationResult` contains
 `initial_state`, nonempty `monthly_results`, and `final_state`, validating connected
 months and carried stocks and prices. The final state is the last completed
 month's ending state; it is not advanced into an extra month.
@@ -177,11 +232,16 @@ new `CommodityPrice` records dated to that simulation month. These are model inp
 not additional observations from the historical source. There is no interpolation,
 historical price replay, or feedback from supply and demand to prices.
 
-No harvesting, new production, imports, or trading settlement replenish soybean
-stocks. Purchases and sale offers remain wholly unexecuted. Processing consumes
-shared regional stock under the [existing settlement simplification](settlement.md),
-not agent ownership or matched Producer-to-Crusher transactions. Repeated batches
-within one month, replay protection, and trade matching remain outside this API.
+Legacy runs do not replenish stocks through production or imports, and their
+purchase/sale intentions remain wholly unexecuted. Physical runs apply caller-supplied
+flows and matched transfers using shared regional stock, without agent ownership
+or reservation. Neither mode models harvesting or derives new flow data inside the
+engine. Repeated-batch replay protection, scenarios, pressure calculation, and price
+feedback remain outside this API.
+
+The existing `scripts/smoke_test_simulation.py` omits `monthly_flows` and exercises
+legacy mode. The in-memory physical-cycle integration test separately covers
+production, crushing, same-month product trades, and consumption across two regions.
 
 The engine uses no randomness or seed. `SimulationConfig` is not automatically
 connected to execution; a caller may explicitly pass `months=config.duration_steps`.
