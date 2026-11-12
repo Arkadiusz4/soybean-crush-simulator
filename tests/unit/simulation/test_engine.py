@@ -19,12 +19,21 @@ from soybean_sim.agents import (
 )
 from soybean_sim.market import (
     MarketState,
+    RegionalPrice,
+    RegionalPriceError,
     SettlementError,
     SettlementOutcome,
     SettlementResult,
+    initialize_regional_prices,
     settle_decisions,
 )
-from soybean_sim.models import Commodity, CommodityPrice, MarketSnapshot, Region
+from soybean_sim.models import (
+    Commodity,
+    CommodityPrice,
+    Inventory,
+    MarketSnapshot,
+    Region,
+)
 from soybean_sim.simulation import (
     MonthlyResult,
     SimulationError,
@@ -526,3 +535,517 @@ def test_invalid_returned_decision_type(state: MarketState) -> None:
     agent = _FixedDecisionAgent(identity, (cast(AgentDecision, "invalid"),))
     with pytest.raises(SimulationError, match="invalid decision type"):
         run_simulation(state, [agent], crusher_configs={}, months=1)
+
+
+@pytest.fixture
+def regional_prices(state: MarketState) -> tuple[RegionalPrice, ...]:
+    """Provide initial Brazilian prices equal to the global references.
+
+    Args:
+        state: Initial synthetic market observations.
+
+    Returns:
+        Regional observations for each initial commodity.
+    """
+    return initialize_regional_prices(state.snapshot, [Region.BRAZIL])
+
+
+@pytest.fixture
+def two_region_state(state: MarketState) -> MarketState:
+    """Add explicit US stocks for regional observation tests.
+
+    Args:
+        state: Synthetic Brazilian market state.
+
+    Returns:
+        Validated state with both regions' inventories.
+    """
+    return MarketState.from_snapshot(
+        MarketSnapshot(
+            month=state.snapshot.month,
+            prices=state.snapshot.prices,
+            inventories=(
+                *state.snapshot.inventories,
+                *(
+                    Inventory(
+                        region=Region.UNITED_STATES,
+                        commodity=item.commodity,
+                        quantity_tonnes=item.quantity_tonnes,
+                    )
+                    for item in state.snapshot.inventories
+                ),
+            ),
+        )
+    )
+
+
+def test_explicit_none_keeps_shared_global_observations(state: MarketState) -> None:
+    """Keep the existing snapshot path when regional pricing is disabled.
+
+    Args:
+        state: Initial synthetic market state.
+
+    Returns:
+        None: Confirms agents receive the stored global snapshot.
+    """
+    observer = _RecordingAgent(
+        AgentIdentity(
+            agent_id="observer", agent_type=AgentType.TRADER, region=Region.BRAZIL
+        )
+    )
+    result = run_simulation(
+        state, [observer], crusher_configs={}, months=2, regional_prices=None
+    )
+    for monthly, (_, observed) in zip(
+        result.monthly_results, observer.calls, strict=True
+    ):
+        assert observed is monthly.starting_state.snapshot
+    assert result == run_simulation(state, [observer], crusher_configs={}, months=2)
+
+
+def test_baseline_regional_prices_preserve_concrete_simulation_results(
+    state: MarketState,
+    agents: tuple[Agent, ...],
+    configs: dict[str, CrusherConfig],
+    regional_prices: tuple[RegionalPrice, ...],
+) -> None:
+    """Retain existing decisions and settlement when regional values equal baseline.
+
+    Args:
+        state: Initial synthetic state.
+        agents: Producer, Crusher, and Trader instances.
+        configs: Shared crushing settings.
+        regional_prices: Baseline regional values.
+
+    Returns:
+        None: Confirms compatibility with all concrete agent roles.
+    """
+    assert run_simulation(
+        state,
+        agents,
+        crusher_configs=configs,
+        months=4,
+        regional_prices=regional_prices,
+    ) == run_simulation(state, agents, crusher_configs=configs, months=4)
+
+
+def test_agent_regions_receive_their_own_price_views(
+    two_region_state: MarketState,
+) -> None:
+    """Share inventories while selecting prices by each registered identity's region.
+
+    Args:
+        two_region_state: Initial stocks and prices for Brazil and the US.
+
+    Returns:
+        None: Confirms regional values, agent order, and unchanged market records.
+    """
+    calls: list[tuple[str, MarketSnapshot]] = []
+    observers = [
+        _RecordingAgent(
+            AgentIdentity(
+                agent_id=agent_id, agent_type=AgentType.TRADER, region=region
+            ),
+            calls,
+        )
+        for agent_id, region in (
+            ("z-us", Region.UNITED_STATES),
+            ("a-br", Region.BRAZIL),
+            ("b-br", Region.BRAZIL),
+        )
+    ]
+    prices = tuple(
+        price.model_copy(
+            update={
+                "price_usd_per_tonne": price.price_usd_per_tonne
+                * (0.8 if price.region == Region.BRAZIL else 1.2)
+            }
+        )
+        for price in initialize_regional_prices(
+            two_region_state.snapshot, [Region.BRAZIL, Region.UNITED_STATES]
+        )
+    )
+    original_state = two_region_state.model_dump_json()
+    original_prices = [price.model_dump_json() for price in prices]
+    result = run_simulation(
+        two_region_state,
+        observers,
+        crusher_configs={},
+        months=1,
+        regional_prices=prices,
+    )
+    assert [agent_id for agent_id, _ in calls] == ["a-br", "b-br", "z-us"]
+    observations = dict(calls)
+    assert observations["a-br"] == observations["b-br"]
+    assert observations["a-br"].prices != observations["z-us"].prices
+    for agent_id, region in (
+        ("a-br", Region.BRAZIL),
+        ("b-br", Region.BRAZIL),
+        ("z-us", Region.UNITED_STATES),
+    ):
+        observation = observations[agent_id]
+        assert {
+            price.commodity: price.price_usd_per_tonne for price in observation.prices
+        } == {
+            price.commodity: price.price_usd_per_tonne
+            for price in prices
+            if price.region == region
+        }
+        assert all(
+            price.data_source == "simulated_regional" for price in observation.prices
+        )
+        assert observation.inventories == two_region_state.snapshot.inventories
+        assert observation.month == two_region_state.snapshot.month
+    assert result.final_state == two_region_state
+    assert (
+        result.monthly_results[0].starting_state.snapshot.prices
+        == two_region_state.snapshot.prices
+    )
+    assert two_region_state.model_dump_json() == original_state
+    assert [price.model_dump_json() for price in prices] == original_prices
+
+
+def test_monthly_regional_views_follow_current_stocks_and_calendar(
+    state: MarketState,
+    agents: tuple[Agent, ...],
+    configs: dict[str, CrusherConfig],
+    regional_prices: tuple[RegionalPrice, ...],
+) -> None:
+    """Carry constant local values through rollover while exposing current stocks.
+
+    Args:
+        state: Initial November state.
+        agents: Concrete regional agents.
+        configs: Shared crushing settings.
+        regional_prices: Initial Brazilian prices.
+
+    Returns:
+        None: Confirms monthly view dates, stock carryover, and global price isolation.
+    """
+    prices = tuple(
+        price.model_copy(update={"price_usd_per_tonne": 200})
+        if price.commodity == Commodity.SOYBEANS
+        else price
+        for price in regional_prices
+    )
+    extra = RegionalPrice(
+        month=state.snapshot.month,
+        region=Region.UNITED_STATES,
+        commodity=Commodity.SOYBEANS,
+        price_usd_per_tonne=350,
+    )
+    supplied = (*prices, extra)
+    observer = _RecordingAgent(
+        AgentIdentity(
+            agent_id="zz-observer", agent_type=AgentType.TRADER, region=Region.BRAZIL
+        )
+    )
+    original_prices = [price.model_dump_json() for price in supplied]
+    original_state = state.model_dump_json()
+    result = run_simulation(
+        state,
+        (*agents, observer),
+        crusher_configs=configs,
+        months=4,
+        regional_prices=iter(supplied),
+    )
+    assert [observed.month for _, observed in observer.calls] == [
+        date(2023, 11, 1),
+        date(2023, 12, 1),
+        date(2024, 1, 1),
+        date(2024, 2, 1),
+    ]
+    for monthly, (_, observed) in zip(
+        result.monthly_results, observer.calls, strict=True
+    ):
+        assert observed.inventories == monthly.starting_state.snapshot.inventories
+        assert {
+            price.commodity: price.price_usd_per_tonne for price in observed.prices
+        } == {price.commodity: price.price_usd_per_tonne for price in prices}
+        assert all(price.month == monthly.month for price in observed.prices)
+        for market_state in (monthly.starting_state, monthly.ending_state):
+            assert {
+                price.commodity: (price.price_usd_per_tonne, price.data_source)
+                for price in market_state.snapshot.prices
+            } == {
+                price.commodity: (price.price_usd_per_tonne, price.data_source)
+                for price in state.snapshot.prices
+            }
+            assert all(
+                price.month == monthly.month for price in market_state.snapshot.prices
+            )
+    observed_soybeans = [
+        next(
+            stock.quantity_tonnes
+            for stock in observed.inventories
+            if stock.commodity == Commodity.SOYBEANS
+        )
+        for _, observed in observer.calls
+    ]
+    assert observed_soybeans == [10000, 6000, 2000, 0]
+    first = result.monthly_results[0]
+    assert (
+        next(
+            decision.quantity_tonnes
+            for decision in first.decisions
+            if decision.agent.agent_type == AgentType.PRODUCER
+        )
+        == 2000
+    )
+    assert (
+        next(
+            decision.quantity_tonnes
+            for decision in first.decisions
+            if decision.action == DecisionAction.PURCHASE
+        )
+        == 1000
+    )
+    assert state.model_dump_json() == original_state
+    assert [price.model_dump_json() for price in supplied] == original_prices
+    assert result == run_simulation(
+        state,
+        reversed((*agents, observer)),
+        crusher_configs=configs,
+        months=4,
+        regional_prices=reversed(supplied),
+    )
+
+
+def test_all_concrete_roles_respond_to_explicit_regional_prices(
+    state: MarketState,
+    agents: tuple[Agent, ...],
+    configs: dict[str, CrusherConfig],
+    regional_prices: tuple[RegionalPrice, ...],
+) -> None:
+    """Drive each existing role through its regional observation without agent changes.
+
+    Args:
+        state: Initial market state.
+        agents: Producer, Crusher, and Trader instances.
+        configs: Shared crushing settings.
+        regional_prices: Baseline regional observations.
+
+    Returns:
+        None: Confirms changed offers and demand, with unprofitable crushing skipped.
+    """
+    starting = MarketState.from_snapshot(
+        MarketSnapshot(
+            month=state.snapshot.month,
+            prices=state.snapshot.prices,
+            inventories=tuple(
+                Inventory(
+                    region=item.region,
+                    commodity=item.commodity,
+                    quantity_tonnes=100
+                    if item.commodity != Commodity.SOYBEANS
+                    else item.quantity_tonnes,
+                )
+                for item in state.snapshot.inventories
+            ),
+        )
+    )
+    values = {
+        Commodity.SOYBEANS: 400,
+        Commodity.SOYBEAN_MEAL: 200,
+        Commodity.SOYBEAN_OIL: 600,
+    }
+    prices = tuple(
+        price.model_copy(update={"price_usd_per_tonne": values[price.commodity]})
+        for price in regional_prices
+    )
+    result = run_simulation(
+        starting, agents, crusher_configs=configs, months=1, regional_prices=prices
+    )
+    assert {
+        (
+            decision.agent.agent_type,
+            decision.action,
+            decision.commodity,
+        ): decision.quantity_tonnes
+        for decision in result.monthly_results[0].decisions
+    } == {
+        (AgentType.PRODUCER, DecisionAction.OFFER_FOR_SALE, Commodity.SOYBEANS): 8000,
+        (AgentType.TRADER, DecisionAction.PURCHASE, Commodity.SOYBEANS): 200,
+        (AgentType.TRADER, DecisionAction.OFFER_FOR_SALE, Commodity.SOYBEAN_MEAL): 20,
+        (AgentType.TRADER, DecisionAction.OFFER_FOR_SALE, Commodity.SOYBEAN_OIL): 20,
+    }
+    assert result.final_state == starting
+    assert all(
+        settlement.executed_tonnes == 0
+        for settlement in result.monthly_results[0].settlement_results
+    )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"month": date(2023, 12, 1)},
+        {"month": date(2023, 11, 2)},
+        {"month": "2023-11-01"},
+        {"price_usd_per_tonne": 0},
+        {"price_usd_per_tonne": -1},
+        {"price_usd_per_tonne": float("nan")},
+        {"price_usd_per_tonne": float("inf")},
+        {"price_usd_per_tonne": True},
+        {"price_usd_per_tonne": "250"},
+        {"region": "unknown"},
+    ],
+)
+def test_regional_validation_finishes_before_agent_execution(
+    state: MarketState,
+    regional_prices: tuple[RegionalPrice, ...],
+    changes: dict[str, object],
+) -> None:
+    """Reject malformed supplied regional data before any agent observes a month.
+
+    Args:
+        state: Initial global observations.
+        regional_prices: Valid baseline regional observations.
+        changes: Invalid copied fields.
+
+    Returns:
+        None: Confirms regional errors propagate with no decisions executed.
+    """
+    observer = _RecordingAgent(
+        AgentIdentity(
+            agent_id="observer", agent_type=AgentType.TRADER, region=Region.BRAZIL
+        )
+    )
+    prices = (regional_prices[0].model_copy(update=changes), *regional_prices[1:])
+    with pytest.raises(RegionalPriceError):
+        run_simulation(
+            state, [observer], crusher_configs={}, months=2, regional_prices=prices
+        )
+    assert observer.calls == []
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_duplicate_regional_records_are_rejected(
+    state: MarketState,
+    regional_prices: tuple[RegionalPrice, ...],
+    conflicting: bool,
+) -> None:
+    """Reject equal and conflicting repeated regional commodity keys.
+
+    Args:
+        state: Initial market state.
+        regional_prices: Valid initial series.
+        conflicting: Whether the repeated record has another price value.
+
+    Returns:
+        None: Confirms duplicate validation occurs before simulation.
+    """
+    duplicate = regional_prices[0].model_copy(
+        update={"price_usd_per_tonne": 999} if conflicting else {}
+    )
+    with pytest.raises(RegionalPriceError, match="Duplicate regional price"):
+        run_simulation(
+            state,
+            [],
+            crusher_configs={},
+            months=1,
+            regional_prices=(*regional_prices, duplicate),
+        )
+
+
+def test_coverage_is_required_for_every_agent_region_before_execution(
+    two_region_state: MarketState,
+    regional_prices: tuple[RegionalPrice, ...],
+) -> None:
+    """Detect a later agent's absent region before an earlier valid agent decides.
+
+    Args:
+        two_region_state: State with inventories in Brazil and the US.
+        regional_prices: Complete prices for Brazil only.
+
+    Returns:
+        None: Confirms no global fallback or partial month execution.
+    """
+    first = _RecordingAgent(
+        AgentIdentity(agent_id="a", agent_type=AgentType.TRADER, region=Region.BRAZIL)
+    )
+    second = _RecordingAgent(
+        AgentIdentity(
+            agent_id="z", agent_type=AgentType.TRADER, region=Region.UNITED_STATES
+        )
+    )
+    with pytest.raises(
+        RegionalPriceError, match="Missing regional prices for united_states"
+    ):
+        run_simulation(
+            two_region_state,
+            [first, second],
+            crusher_configs={},
+            months=1,
+            regional_prices=regional_prices,
+        )
+    assert first.calls == second.calls == []
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_missing_regional_commodity_coverage_is_rejected(
+    state: MarketState,
+    regional_prices: tuple[RegionalPrice, ...],
+    empty: bool,
+) -> None:
+    """Require all snapshot commodities when regional prices are explicitly supplied.
+
+    Args:
+        state: Initial state.
+        regional_prices: Complete Brazilian prices.
+        empty: Whether to remove all records rather than one commodity.
+
+    Returns:
+        None: Confirms missing prices never fall back to global observations.
+    """
+    observer = _RecordingAgent(
+        AgentIdentity(
+            agent_id="observer", agent_type=AgentType.TRADER, region=Region.BRAZIL
+        )
+    )
+    with pytest.raises(RegionalPriceError, match="Missing regional prices"):
+        run_simulation(
+            state,
+            [observer],
+            crusher_configs={},
+            months=1,
+            regional_prices=() if empty else regional_prices[1:],
+        )
+    assert observer.calls == []
+
+
+@pytest.mark.parametrize("prices", [42, [{}], ["invalid"]])
+def test_invalid_regional_collection_types(state: MarketState, prices: Any) -> None:
+    """Require an iterable of RegionalPrice models even for empty registrations.
+
+    Args:
+        state: Initial state.
+        prices: Malformed regional price input.
+
+    Returns:
+        None: Confirms typed regional input validation remains active.
+    """
+    with pytest.raises(RegionalPriceError):
+        run_simulation(state, [], crusher_configs={}, months=1, regional_prices=prices)
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_empty_registrations_do_not_require_regional_coverage(
+    state: MarketState,
+    regional_prices: tuple[RegionalPrice, ...],
+    empty: bool,
+) -> None:
+    """Allow valid partial or empty series when there are no observing agents.
+
+    Args:
+        state: Initial state.
+        regional_prices: Valid initial series.
+        empty: Whether to supply no records instead of one commodity.
+
+    Returns:
+        None: Confirms empty simulations retain global behavior and advance dates.
+    """
+    prices = () if empty else regional_prices[:1]
+    assert run_simulation(
+        state, [], crusher_configs={}, months=3, regional_prices=prices
+    ) == run_simulation(state, [], crusher_configs={}, months=3)

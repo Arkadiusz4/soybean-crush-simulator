@@ -19,6 +19,7 @@ from soybean_sim.market import (
     _regional_prices,
     initialize_regional_prices,
     snapshot_for_region,
+    validate_regional_prices,
 )
 from soybean_sim.models import Commodity, CommodityPrice, MarketSnapshot, Region
 
@@ -65,11 +66,13 @@ def test_public_exports() -> None:
     assert initialize_regional_prices is _regional_prices.initialize_regional_prices
     assert snapshot_for_region is _regional_prices.snapshot_for_region
     assert RegionalPriceError is _regional_prices.RegionalPriceError
+    assert validate_regional_prices is _regional_prices.validate_regional_prices
     assert issubclass(RegionalPriceError, ValueError)
     assert {
         "initialize_regional_prices",
         "snapshot_for_region",
         "RegionalPriceError",
+        "validate_regional_prices",
     } <= set(market.__all__)
 
 
