@@ -1348,6 +1348,7 @@ dev = [
     { name = "pyright", extra = ["nodejs"] },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "rich" },
     { name = "ruff" },
 ]
 
@@ -1366,6 +1367,7 @@ dev = [
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.400,<2" },
     { name = "pytest", specifier = ">=8.3,<10" },
     { name = "pytest-cov", specifier = ">=6,<8" },
+    { name = "rich", specifier = ">=15,<16" },
     { name = "ruff", specifier = ">=0.11,<1" },
 ]
 
