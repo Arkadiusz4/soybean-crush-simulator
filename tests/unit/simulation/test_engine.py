@@ -620,13 +620,23 @@ def test_baseline_regional_prices_preserve_concrete_simulation_results(
     Returns:
         None: Confirms compatibility with all concrete agent roles.
     """
-    assert run_simulation(
+    regional = run_simulation(
         state,
         agents,
         crusher_configs=configs,
         months=4,
         regional_prices=regional_prices,
-    ) == run_simulation(state, agents, crusher_configs=configs, months=4)
+    )
+    baseline = run_simulation(state, agents, crusher_configs=configs, months=4)
+    assert regional.initial_state == baseline.initial_state
+    assert regional.final_state == baseline.final_state
+    for observed, original in zip(
+        regional.monthly_results, baseline.monthly_results, strict=True
+    ):
+        assert observed.model_dump(exclude={"regional_prices"}) == original.model_dump(
+            exclude={"regional_prices"}
+        )
+        assert len(observed.regional_prices) == len(regional_prices)
 
 
 def test_agent_regions_receive_their_own_price_views(
@@ -1046,6 +1056,16 @@ def test_empty_registrations_do_not_require_regional_coverage(
         None: Confirms empty simulations retain global behavior and advance dates.
     """
     prices = () if empty else regional_prices[:1]
-    assert run_simulation(
+    regional = run_simulation(
         state, [], crusher_configs={}, months=3, regional_prices=prices
-    ) == run_simulation(state, [], crusher_configs={}, months=3)
+    )
+    baseline = run_simulation(state, [], crusher_configs={}, months=3)
+    assert regional.initial_state == baseline.initial_state
+    assert regional.final_state == baseline.final_state
+    for observed, original in zip(
+        regional.monthly_results, baseline.monthly_results, strict=True
+    ):
+        assert observed.model_dump(exclude={"regional_prices"}) == original.model_dump(
+            exclude={"regional_prices"}
+        )
+        assert len(observed.regional_prices) == len(prices)
