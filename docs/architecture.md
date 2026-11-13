@@ -403,31 +403,35 @@ rules, numerical tolerances, limitations, and a complete synthetic example.
 
 ## Monthly simulation workflow
 
-`simulation/engine.py` exposes `run_simulation()`. It validates the initial state,
+`simulation/_engine.py` exposes `run_simulation()`. It validates the initial state,
 duration, regional agent identities, unique IDs, and required crusher configs.
-Each month, agents observe one shared starting snapshot in ascending ID order;
-the engine collects their decisions and calls settlement once. Ending inventories
-carry into the next calendar month. Price values and sources stay constant while
-price dates advance. The final state belongs to the last completed month.
+Agents decide in ascending ID order using global or regional price views.
+The default cycle settles crushing and defers trades. Supplying `monthly_flows`
+enables production, crushing, matched trades, and consumption. Optional
+`price_dynamics_config` then connects settled physical activity to market pressure
+and the following month's regional prices. Ending inventories carry forward;
+global reference values and sources stay constant while dates advance. The final
+state belongs to the last completed month.
 
-`simulation/calendar.py` handles calendar boundaries and constant-price dating.
-`simulation/models.py` defines frozen `MonthlyResult` and `SimulationResult`,
+`simulation/_calendar.py` handles calendar boundaries and constant-price dating.
+Dynamic prices use the market updater's next-month dates directly.
+`simulation/_models.py` defines frozen `MonthlyResult` and `SimulationResult`,
 validating monthly records and connected histories. Empty agent collections are
 valid. Agent and settlement errors propagate; no randomness is introduced.
 
 ```mermaid
 flowchart LR
     Data[Prepared SimulationInput] --> State[MarketSnapshot and MarketState]
-    State --> Agents[Agents observe starting snapshot]
-    Agents --> Settlement[One settlement batch]
+    State --> Agents[Agents observe current prices and available stocks]
+    Agents --> Settlement[Legacy settlement or physical cycle]
     Settlement --> History[Monthly result]
-    Settlement --> Next[Carry ending stocks and redate prices]
+    Settlement --> Next[Carry stocks and optionally update regional prices]
     Next --> Agents
 ```
 
 The engine composes existing agent and settlement APIs without changing their
-rules. Historical loading, annual flow allocation, trading execution, dynamic
-pricing, and scenario effects remain separate. The CLI is unchanged.
+rules. Historical loading, annual flow allocation, and scenario effects remain
+separate from engine execution. The CLI is unchanged.
 See the [monthly engine documentation](simulation.md) for initialization from
 `SimulationInput`, result fields, assumptions, and a runnable example.
 
