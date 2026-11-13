@@ -8,7 +8,14 @@ from typing import Annotated, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from soybean_sim.agents import AgentDecision, DecisionAction
-from soybean_sim.market import MarketFlow, MarketState, SettlementResult, TradeExecution
+from soybean_sim.market import (
+    MarketFlow,
+    MarketPressure,
+    MarketState,
+    RegionalPrice,
+    SettlementResult,
+    TradeExecution,
+)
 
 from . import _calendar
 
@@ -28,6 +35,8 @@ class MonthlyResult(BaseModel):
             including physical months with no flows or matched trades.
         market_flows (tuple[MarketFlow, ...]): Full monthly flows, including references.
         executed_trades: Matched and settled physical trades.
+        regional_prices: Regional values observed by agents during this month.
+        market_pressures: Physical supply/demand signals used for next-month pricing.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -40,6 +49,8 @@ class MonthlyResult(BaseModel):
     physical_cycle: bool = Field(default=False, strict=True)
     market_flows: tuple[MarketFlow, ...] = ()
     executed_trades: tuple[TradeExecution, ...] = ()
+    regional_prices: tuple[RegionalPrice, ...] = ()
+    market_pressures: tuple[MarketPressure, ...] = ()
 
     @model_validator(mode="after")
     def monthly_records_are_consistent(self) -> Self:
@@ -93,6 +104,29 @@ class MonthlyResult(BaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def regional_records_match_month_and_keys(self) -> Self:
+        """Require unique current-month regional observations and physical pressures.
+
+        Returns:
+            Self: The validated monthly result.
+        """
+        if self.market_pressures and not self.physical_cycle:
+            raise ValueError("market pressures require physical_cycle=True")
+
+        for label, records in (
+            ("regional price", self.regional_prices),
+            ("market pressure", self.market_pressures),
+        ):
+            if any(record.month != self.month for record in records):
+                raise ValueError(f"all {label} records must match the result month")
+
+            keys = [(record.region, record.commodity) for record in records]
+            if len(keys) != len(set(keys)):
+                raise ValueError(f"duplicate {label} records")
+
+        return self
+
 
 class SimulationResult(BaseModel):
     """Group a nonempty monthly history with its initial and last completed states.
@@ -101,7 +135,7 @@ class SimulationResult(BaseModel):
         initial_state (MarketState): Market state at the start of the first simulated
             month.
         monthly_results (tuple[MonthlyResult, ...]): Nonempty sequence of connected
-            monthly results with carried stocks and constant prices.
+            monthly results with carried stocks and constant global references.
         final_state (MarketState): Ending state of the last completed month, without an
             extra calendar advance.
     """

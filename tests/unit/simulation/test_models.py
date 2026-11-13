@@ -4,7 +4,14 @@ import pytest
 from pydantic import ValidationError
 
 from soybean_sim.agents import Agent, CrusherConfig, DecisionAction
-from soybean_sim.market import MarketFlow, MarketFlowType, MarketState, TradeExecution
+from soybean_sim.market import (
+    MarketFlow,
+    MarketFlowType,
+    MarketPressure,
+    MarketState,
+    RegionalPrice,
+    TradeExecution,
+)
 from soybean_sim.models import Commodity, CommodityPrice, MarketSnapshot, Region
 from soybean_sim.simulation import MonthlyResult, SimulationResult, run_simulation
 
@@ -228,5 +235,78 @@ def test_physical_activity_requires_mode_and_matching_month(
             {
                 **physical,
                 field: (record.model_copy(update={"month": date(2024, 1, 1)}),),
+            }
+        )
+
+
+@pytest.mark.parametrize("field", ["regional_prices", "market_pressures"])
+def test_regional_history_requires_unique_current_month_records(
+    result: SimulationResult, field: str
+) -> None:
+    """Validate regional history while retaining existing result defaults.
+
+    Args:
+        result (SimulationResult): Existing legacy history.
+        field (str): Regional observation field being validated.
+
+    Returns:
+        None: Confirms timing, uniqueness, mode rules, and JSON serialization.
+    """
+    monthly = result.monthly_results[0]
+    assert monthly.regional_prices == monthly.market_pressures == ()
+    record = (
+        RegionalPrice(
+            month=monthly.month,
+            region=Region.BRAZIL,
+            commodity=Commodity.SOYBEANS,
+            price_usd_per_tonne=250,
+        )
+        if field == "regional_prices"
+        else MarketPressure(
+            month=monthly.month,
+            region=Region.BRAZIL,
+            commodity=Commodity.SOYBEANS,
+            supply_tonnes=0,
+            demand_tonnes=10,
+        )
+    )
+    if field == "market_pressures":
+        with pytest.raises(ValidationError, match="pressures require physical_cycle"):
+            MonthlyResult.model_validate({**monthly.model_dump(), field: (record,)})
+    else:
+        legacy = MonthlyResult.model_validate(
+            {**monthly.model_dump(), field: (record,)}
+        )
+        assert legacy.regional_prices == (record,)
+        assert legacy.market_pressures == ()
+    physical = {
+        **monthly.model_dump(),
+        "physical_cycle": True,
+        "settlement_results": tuple(
+            item
+            for item in monthly.settlement_results
+            if item.decision.action == DecisionAction.CRUSH
+        ),
+        field: (record,),
+    }
+    validated = MonthlyResult.model_validate(physical)
+    assert MonthlyResult.model_validate_json(validated.model_dump_json()) == validated
+    with pytest.raises(ValidationError, match="must match the result month"):
+        MonthlyResult.model_validate(
+            {
+                **physical,
+                field: (record.model_copy(update={"month": date(2024, 1, 1)}),),
+            }
+        )
+    with pytest.raises(ValidationError, match="duplicate"):
+        MonthlyResult.model_validate({**physical, field: (record, record)})
+    quantity_field = (
+        "price_usd_per_tonne" if field == "regional_prices" else "demand_tonnes"
+    )
+    with pytest.raises(ValidationError, match="duplicate"):
+        MonthlyResult.model_validate(
+            {
+                **physical,
+                field: (record, record.model_copy(update={quantity_field: 20})),
             }
         )

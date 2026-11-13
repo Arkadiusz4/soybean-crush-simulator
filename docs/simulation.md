@@ -80,9 +80,9 @@ No stage failure returns a partial simulation result or changes the input state.
 
 ## Regional price observations
 
-`run_simulation(..., regional_prices=None)` preserves the original shared global
-snapshot behavior. Supply an initial-month `RegionalPrice` series to give each
-agent the prices for its own region:
+With price dynamics disabled, `run_simulation(..., regional_prices=None)` preserves
+the original shared global snapshot behavior. Supply an initial-month
+`RegionalPrice` series to give each agent the prices for its own region:
 
 ```python
 result = run_simulation(
@@ -105,10 +105,49 @@ month and **all** regional inventories. Its `CommodityPrice` records use the
 `simulated_regional` source label. Stored market states, monthly histories, and
 settlement retain global reference prices.
 
-Regional values stay constant across months; only their observation dates advance
+With `price_dynamics_config=None`, regional values stay constant; their dates advance
 using the existing calendar utility. Supplied records remain unchanged. In physical
-mode, regional views include post-production inventories. Dynamic pricing remains
-outside the engine.
+mode, regional views include post-production inventories.
+
+## Dynamic regional pricing
+
+Enable price feedback explicitly with the existing market configuration:
+
+```python
+from soybean_sim.market import PriceDynamicsConfig
+
+result = run_simulation(
+    initial_state,
+    agents,
+    crusher_configs=configs,
+    months=3,
+    monthly_flows=flows,  # An empty tuple also enables physical mode.
+    price_dynamics_config=PriceDynamicsConfig(),
+)
+```
+
+Dynamic pricing requires `monthly_flows` to be provided; `None` raises
+`SimulationError` before decisions run. If regional baselines are omitted, the
+engine calls `initialize_regional_prices()` using every inventory region,
+including regions without agents. Explicit baselines retain their values and must
+cover all three commodities in exactly those regions. Invalid settings or coverage
+fail before execution with the existing pricing or regional-price domain error.
+
+Agents observe the current month's regional values. After the physical cycle,
+`calculate_market_pressures()` receives that month's flows, executed trades, and
+executed crushing totals. Inputs are summed with `math.fsum()`; meal/oil outputs
+use each settled crusher's configured yields. Requested or unmatched intentions
+do not contribute, and reference-only USDA meal/oil supply remains excluded.
+
+`update_regional_prices()` computes next month's values from those pressures.
+The engine uses its next-month dates directly, including December-to-January
+transitions. Updated prices never replace observations within the completed
+month. Global reference values and source labels remain unchanged. A single-month
+run still returns exactly one result; computed following-month prices are not
+stored as an extra month. The updater propagates its calendar error if no following
+month can be represented, including a dynamic run ending in December 9999.
+
+## Monthly history
 
 Frozen `MonthlyResult` contains `month`, `starting_state`, `decisions`,
 `settlement_results`, and `ending_state`. The starting state is the opening state
@@ -116,6 +155,13 @@ before production; agent views in physical mode include that month's production.
 The additional fields default to `physical_cycle=False`, `market_flows=()`, and
 `executed_trades=()` for legacy callers. The mode flag distinguishes an explicitly
 empty physical cycle from legacy execution.
+
+`regional_prices=()` and `market_pressures=()` are additional empty defaults.
+Regional history stores the values observed during the recorded month, including
+constant regional runs. Pressures are recorded only when dynamic pricing is
+enabled. Each collection requires unique region/commodity keys and dates matching
+the result month; legacy records cannot contain pressures. Following-month prices
+are recorded only when that month is actually simulated.
 
 Physical months retain every decision, every validated flow (including reference
 production), crushing settlement results only, and actually matched/settled trades.
@@ -227,21 +273,25 @@ assert result.final_state.snapshot.month == date(2024, 2, 1)
 
 ## Current assumptions and limitations
 
-Price **values and original source labels are held constant**. Each new month has
-new `CommodityPrice` records dated to that simulation month. These are model inputs,
-not additional observations from the historical source. There is no interpolation,
-historical price replay, or feedback from supply and demand to prices.
+Global reference **values and original source labels are held constant**. Each new
+month has new `CommodityPrice` records dated to that simulation month. These are
+model inputs, not additional observations from the historical source. There is no
+interpolation or historical price replay. Regional price feedback is an optional, uncalibrated
+heuristic using the existing sensitivity, monthly cap, price floor, and supply floor.
 
 Legacy runs do not replenish stocks through production or imports, and their
 purchase/sale intentions remain wholly unexecuted. Physical runs apply caller-supplied
 flows and matched transfers using shared regional stock, without agent ownership
 or reservation. Neither mode models harvesting or derives new flow data inside the
-engine. Repeated-batch replay protection, scenarios, pressure calculation, and price
-feedback remain outside this API.
+engine. Repeated-batch replay protection, scenarios, and empirical calibration
+remain outside this API. Opening stock levels and unmatched intentions are not
+additional pressure signals; only the existing physical-activity accounting is used.
 
 The existing `scripts/smoke_test_simulation.py` omits `monthly_flows` and exercises
 legacy mode. The in-memory physical-cycle integration test separately covers
 production, crushing, same-month product trades, and consumption across two regions.
+The dynamic-pricing integration test separately checks observed next-month values,
+configured crushing, physical flows, and pressure history across a year boundary.
 
 The engine uses no randomness or seed. `SimulationConfig` is not automatically
 connected to execution; a caller may explicitly pass `months=config.duration_steps`.
