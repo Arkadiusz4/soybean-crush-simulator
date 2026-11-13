@@ -2,6 +2,7 @@ import math
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -20,6 +21,7 @@ from soybean_sim.market import (
     PriceDynamicsError,
     RegionalPriceError,
     initialize_regional_prices,
+    update_regional_prices,
 )
 from soybean_sim.models import Commodity, Inventory, MarketSnapshot, Region
 from soybean_sim.simulation import SimulationError, run_simulation
@@ -585,3 +587,72 @@ def test_crushing_totals_use_stable_summation(state: MarketState) -> None:
     assert pressures[Commodity.SOYBEAN_MEAL].supply_tonnes == math.fsum(
         quantity * 0.5 for quantity in quantities
     )
+
+
+@pytest.mark.parametrize(
+    ("first_month", "months"),
+    [
+        (date(2025, 1, 1), 1),
+        (date(date.max.year, 12, 1), 1),
+        (date(date.max.year, 11, 1), 2),
+    ],
+)
+def test_final_month_records_pressure_without_calculating_unused_prices(
+    state: MarketState, first_month: date, months: int
+) -> None:
+    """Finish dynamic runs at the calendar boundary without an extra price step.
+
+    Args:
+        state (MarketState): Synthetic inventory and global reference values.
+        first_month (date): Normal month or near the maximum supported year.
+        months (int): Requested history length.
+
+    Returns:
+        None: Confirms final pressure, current prices, and exactly needed updates.
+    """
+    initial = MarketState.from_snapshot(
+        state.snapshot.model_copy(
+            update={
+                "month": first_month,
+                "prices": tuple(
+                    price.model_copy(update={"month": first_month})
+                    for price in state.snapshot.prices
+                ),
+            }
+        )
+    )
+    flows = tuple(
+        MarketFlow(
+            month=date(first_month.year, first_month.month + index, 1),
+            region=Region.BRAZIL,
+            commodity=Commodity.SOYBEANS,
+            flow_type=MarketFlowType.SUPPLY,
+            quantity_tonnes=100,
+        )
+        for index in range(months)
+    )
+    with patch(
+        "soybean_sim.simulation._engine.update_regional_prices",
+        wraps=update_regional_prices,
+    ) as updater:
+        result = run_simulation(
+            initial,
+            [],
+            crusher_configs={},
+            months=months,
+            monthly_flows=flows,
+            price_dynamics_config=PriceDynamicsConfig(),
+        )
+    assert updater.call_count == months - 1
+    assert len(result.monthly_results) == months
+    last = result.monthly_results[-1]
+    assert len(last.market_pressures) == 3
+    assert all(item.month == last.month for item in last.market_pressures)
+    assert sum(item.supply_tonnes for item in last.market_pressures) == 100
+    assert result.final_state == last.ending_state
+    assert all(price.month == last.month for price in last.regional_prices)
+    assert next(
+        price.price_usd_per_tonne
+        for price in last.regional_prices
+        if price.commodity == Commodity.SOYBEANS
+    ) == pytest.approx(250 * 0.8 ** (months - 1))
