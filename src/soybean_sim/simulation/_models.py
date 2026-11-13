@@ -7,8 +7,8 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from soybean_sim.agents import AgentDecision
-from soybean_sim.market import MarketState, SettlementResult
+from soybean_sim.agents import AgentDecision, DecisionAction
+from soybean_sim.market import MarketFlow, MarketState, SettlementResult, TradeExecution
 
 from . import _calendar
 
@@ -18,12 +18,16 @@ class MonthlyResult(BaseModel):
 
     Args:
         month (date): First calendar day of the completed simulation month.
-        starting_state (MarketState): Shared market state observed before agents decide.
+        starting_state (MarketState): Opening state before production or decisions.
         decisions (tuple[AgentDecision, ...]): Collected agent intentions for the month.
-        settlement_results (tuple[SettlementResult, ...]): Settlement records covering
-            every decision exactly once.
+        settlement_results: All decision results in legacy mode, or crushing results
+            only in physical-cycle mode.
         ending_state (MarketState): Market state after settlement, dated to the same
             month.
+        physical_cycle (bool): Distinguishes physical activity from legacy settlement,
+            including physical months with no flows or matched trades.
+        market_flows (tuple[MarketFlow, ...]): Full monthly flows, including references.
+        executed_trades: Matched and settled physical trades.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -33,6 +37,9 @@ class MonthlyResult(BaseModel):
     decisions: tuple[AgentDecision, ...]
     settlement_results: tuple[SettlementResult, ...]
     ending_state: MarketState
+    physical_cycle: bool = Field(default=False, strict=True)
+    market_flows: tuple[MarketFlow, ...] = ()
+    executed_trades: tuple[TradeExecution, ...] = ()
 
     @model_validator(mode="after")
     def monthly_records_are_consistent(self) -> Self:
@@ -53,12 +60,36 @@ class MonthlyResult(BaseModel):
         if self.starting_state.snapshot.prices != self.ending_state.snapshot.prices:
             raise ValueError("reference prices must remain unchanged within a month")
 
-        if Counter(self.decisions) != Counter(
+        settled_decisions = (
+            decision
+            for decision in self.decisions
+            if not self.physical_cycle or decision.action == DecisionAction.CRUSH
+        )
+        if Counter(settled_decisions) != Counter(
             result.decision for result in self.settlement_results
         ):
+            covered = "CRUSH decision" if self.physical_cycle else "decision"
             raise ValueError(
-                "settlement results must cover every decision exactly once"
+                f"settlement results must cover every {covered} exactly once"
             )
+
+        return self
+
+    @model_validator(mode="after")
+    def physical_records_match_mode_and_month(self) -> Self:
+        """Require physical activity records to match the mode and recorded month.
+
+        Returns:
+            The validated monthly result.
+        """
+        if not self.physical_cycle and (self.market_flows or self.executed_trades):
+            raise ValueError("physical activity records require physical_cycle=True")
+
+        if any(flow.month != self.month for flow in self.market_flows):
+            raise ValueError("all market flows must match the result month")
+
+        if any(trade.month != self.month for trade in self.executed_trades):
+            raise ValueError("all executed trades must match the result month")
 
         return self
 
