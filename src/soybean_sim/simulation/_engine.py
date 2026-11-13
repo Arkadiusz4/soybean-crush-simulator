@@ -141,7 +141,10 @@ def run_simulation(
 
         if price_dynamics_config is not None:
             monthly, current_regional_prices = _update_monthly_prices(
-                monthly, processing_configs, price_dynamics_config
+                monthly,
+                processing_configs,
+                price_dynamics_config,
+                has_next_month=month_index + 1 < months,
             )
 
         history.append(monthly)
@@ -202,16 +205,19 @@ def _update_monthly_prices(
     monthly: MonthlyResult,
     crusher_configs: Mapping[str, CrusherConfig],
     config: PriceDynamicsConfig,
+    *,
+    has_next_month: bool,
 ) -> tuple[MonthlyResult, tuple[RegionalPrice, ...]]:
-    """Record settled pressure and calculate prices for the following month.
+    """Record pressure and update prices only when another month will execute.
 
     Args:
         monthly (MonthlyResult): Completed physical activity and observed prices.
         crusher_configs (Mapping[str, CrusherConfig]): Settled crushers' yield settings.
         config (PriceDynamicsConfig): Validated price response settings.
+        has_next_month (bool): Whether following-month prices are needed.
 
     Returns:
-        tuple: Enriched current-month history and next-month regional prices.
+        tuple: Enriched history and next prices, or current prices after the last step.
     """
     inputs, outputs = _executed_crushing_totals(
         monthly.settlement_results, crusher_configs
@@ -228,11 +234,13 @@ def _update_monthly_prices(
         crushing_outputs_tonnes=outputs,
     )
 
-    next_prices = update_regional_prices(
-        monthly.regional_prices, pressures, config=config
-    )
     recorded = MonthlyResult.model_validate(
         {**monthly.model_dump(), "market_pressures": pressures}
+    )
+    next_prices = (
+        update_regional_prices(monthly.regional_prices, pressures, config=config)
+        if has_next_month
+        else monthly.regional_prices
     )
 
     return recorded, next_prices
