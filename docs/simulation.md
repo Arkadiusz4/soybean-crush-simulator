@@ -143,9 +143,9 @@ do not contribute, and reference-only USDA meal/oil supply remains excluded.
 The engine uses its next-month dates directly, including December-to-January
 transitions. Updated prices never replace observations within the completed
 month. Global reference values and source labels remain unchanged. A single-month
-run still returns exactly one result; computed following-month prices are not
-stored as an extra month. The updater propagates its calendar error if no following
-month can be represented, including a dynamic run ending in December 9999.
+run still returns exactly one result. Pressure is always recorded, including the
+final month; following-month prices are calculated only if another month will run.
+A simulation ending in December 9999 therefore needs no unsupported calendar step.
 
 ## Monthly history
 
@@ -287,12 +287,35 @@ engine. Repeated-batch replay protection, scenarios, and empirical calibration
 remain outside this API. Opening stock levels and unmatched intentions are not
 additional pressure signals; only the existing physical-activity accounting is used.
 
-The existing `scripts/smoke_test_simulation.py` omits `monthly_flows` and exercises
-legacy mode. The in-memory physical-cycle integration test separately covers
-production, crushing, same-month product trades, and consumption across two regions.
-The dynamic-pricing integration test separately checks observed next-month values,
-configured crushing, physical flows, and pressure history across a year boundary.
-
 The engine uses no randomness or seed. `SimulationConfig` is not automatically
 connected to execution; a caller may explicitly pass `months=config.duration_steps`.
 Scenario labels and the stored seed do not activate shocks or stochastic behavior.
+
+## Smoke validation
+
+```bash
+uv run python scripts/smoke_test_simulation.py
+uv run python scripts/smoke_test_market.py
+uv run python scripts/smoke_test_market.py --verbose
+```
+
+The first script uses local historical datasets in legacy mode, with deferred
+trades. The second needs no datasets: it runs January–March 2025 with synthetic
+Brazil/EU stocks, all three concrete agent roles, generated monthly flows, matched
+soybean trades, and dynamic regional prices. It checks physical accounting,
+explicit expected pressure/price values, agent observations, immutable inputs,
+and repeatability after shuffling registration, flow, and initial-price order.
+Both scripts return a nonzero exit status when an invariant fails.
+
+The Milestone 3 script uses Rich tables for activity totals, first-to-last observed
+regional price changes, final inventories, and validation results. Add `--verbose`
+to include monthly supply, demand, and net-pressure columns. Price colors indicate
+direction only. Failures name the validation stage and end with an overall FAIL.
+
+For each regional commodity, ending stock equals opening stock plus physical
+production, crushing output, and executed imports, less crushing input, executed
+exports, and consumption. Terms apply only to their relevant commodities; USDA
+meal/oil SUPPLY remains reference-only. Global historical prices remain reference
+values; regional prices are simulated. Pressure reflects monthly physical flows,
+not inventory scarcity directly. These checks validate the simplified accounting,
+not empirical price accuracy or economic calibration.
