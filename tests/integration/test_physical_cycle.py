@@ -1,6 +1,9 @@
 import math
 from dataclasses import dataclass
 from datetime import date
+from types import ModuleType
+
+import pytest
 
 from soybean_sim.agents import (
     AgentDecision,
@@ -234,4 +237,57 @@ def test_two_region_physical_cycle() -> None:
         months=2,
         regional_prices=reversed(regional),
         monthly_flows=reversed(flows),
+    )
+
+
+def test_three_month_accounting_with_all_concrete_agent_roles(
+    market_smoke: ModuleType,
+) -> None:
+    """Verify every stock identity and explicit expected stocks with real strategies.
+
+    Args:
+        market_smoke (ModuleType): Shared standalone synthetic scenario and assertions.
+
+    Returns:
+        None: Confirms actual trades, crushing, consumption, and reference exclusions.
+    """
+    case = market_smoke.create_market()
+    result = market_smoke.run_market(case)
+    market_smoke.check_accounting(result, case.crusher_configs)
+    expected_stocks = (
+        (1075, 140, 110, 125, 80, 90),
+        (1125, 180, 120, 175, 60, 80),
+        (1175, 220, 130, 225, 40, 70),
+    )
+    keys = tuple(
+        (region, commodity)
+        for region in (Region.BRAZIL, Region.EUROPEAN_UNION)
+        for commodity in Commodity
+    )
+    for monthly, quantities in zip(
+        result.monthly_results, expected_stocks, strict=True
+    ):
+        assert {
+            (stock.region, stock.commodity): stock.quantity_tonnes
+            for stock in monthly.ending_state.snapshot.inventories
+        } == pytest.approx(dict(zip(keys, quantities, strict=True)))
+        assert len(monthly.decisions) == 5
+        assert len(monthly.settlement_results) == 1
+        (crushing,) = monthly.settlement_results
+        assert crushing.executed_tonnes == 100
+        assert crushing.decision.action == DecisionAction.CRUSH
+        assert crushing.outcome == SettlementOutcome.CRUSH_SETTLED
+        assert all(trade.month == monthly.month for trade in monthly.executed_trades)
+        assert all(
+            trade.seller_agent_id == "producer-br"
+            and trade.buyer_agent_id == "trader-eu"
+            for trade in monthly.executed_trades
+        )
+    assert (
+        sum(
+            trade.quantity_tonnes
+            for monthly in result.monthly_results
+            for trade in monthly.executed_trades
+        )
+        == 125
     )
