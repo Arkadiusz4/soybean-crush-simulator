@@ -1,5 +1,6 @@
-"""Run deterministic legacy or physical market cycles with constant price values."""
+"""Run deterministic market cycles with optional regional price feedback."""
 
+import math
 from collections.abc import Iterable, Mapping
 from datetime import date
 from typing import Final
@@ -19,12 +20,20 @@ from soybean_sim.market import (
     MarketFlow,
     MarketFlowType,
     MarketState,
+    PriceDynamicsConfig,
+    PriceDynamicsError,
     RegionalPrice,
+    RegionalPriceError,
+    SettlementOutcome,
+    SettlementResult,
+    calculate_market_pressures,
+    initialize_regional_prices,
     match_interregional_trades,
     settle_decisions,
     settle_matched_trades,
     settle_monthly_flows,
     snapshot_for_region,
+    update_regional_prices,
     validate_regional_prices,
 )
 from soybean_sim.models import Commodity, MarketSnapshot, Region
@@ -49,12 +58,14 @@ def run_simulation(
     months: int,
     regional_prices: Iterable[RegionalPrice] | None = None,
     monthly_flows: Iterable[MarketFlow] | None = None,
+    price_dynamics_config: PriceDynamicsConfig | None = None,
 ) -> SimulationResult:
     """Run monthly decisions and settlement, preserving constant global prices.
 
     Agents decide in ascending ID order. Without regional prices they share the
     global snapshot; otherwise each receives its region's price view with the same
-    inventories. Regional values stay constant while their dates advance.
+    inventories. Optional price dynamics use settled activity to set next month's
+    regional values; global reference values always remain constant.
 
     Args:
         initial_state: Observations and inventories at the start of the first month.
@@ -66,6 +77,8 @@ def run_simulation(
         monthly_flows: None keeps legacy crushing and deferred trades. Any iterable,
             including an empty one, enables the physical production/trade/consumption
             cycle. Generate flows separately; all records must fit this run's period.
+        price_dynamics_config: Optional price response settings requiring physical
+            mode. Missing regional prices are initialized for all inventory regions.
 
     Returns:
         Initial state, complete monthly history, and the last month's ending state.
@@ -76,16 +89,28 @@ def run_simulation(
     registered_agents, processing_configs = _prepare_agents(
         initial, agents, crusher_configs
     )
-    current_regional_prices = _prepare_regional_prices(
-        initial.snapshot, registered_agents, regional_prices
-    )
+
+    if price_dynamics_config is None:
+        current_regional_prices = _prepare_regional_prices(
+            initial.snapshot, registered_agents, regional_prices
+        )
+    else:
+        if monthly_flows is None:
+            raise SimulationError(
+                "Dynamic pricing requires monthly_flows to be provided"
+            )
+
+        current_regional_prices, price_dynamics_config = _prepare_dynamic_prices(
+            initial.snapshot, regional_prices, price_dynamics_config
+        )
+
     flow_schedule = _prepare_monthly_flows(initial.snapshot, monthly_flows, months)
     state = initial
     history: list[MonthlyResult] = []
     for month_index in range(months):
         if month_index:
             state = _calendar.advance_market_month(state)
-            if current_regional_prices is not None:
+            if current_regional_prices is not None and price_dynamics_config is None:
                 current_regional_prices = _calendar.advance_regional_prices(
                     current_regional_prices
                 )
@@ -103,6 +128,7 @@ def run_simulation(
                 decisions=decisions,
                 settlement_results=settlement_results,
                 ending_state=ending_state,
+                regional_prices=current_regional_prices or (),
             )
         else:
             monthly = _physical_month(
@@ -112,12 +138,169 @@ def run_simulation(
                 flow_schedule.get(state.snapshot.month, ()),
                 current_regional_prices,
             )
+
+        if price_dynamics_config is not None:
+            monthly, current_regional_prices = _update_monthly_prices(
+                monthly, processing_configs, price_dynamics_config
+            )
+
         history.append(monthly)
         state = monthly.ending_state
 
     return SimulationResult(
         initial_state=initial, monthly_results=tuple(history), final_state=state
     )
+
+
+def _prepare_dynamic_prices(
+    snapshot: MarketSnapshot,
+    regional_prices: Iterable[RegionalPrice] | None,
+    config: PriceDynamicsConfig,
+) -> tuple[tuple[RegionalPrice, ...], PriceDynamicsConfig]:
+    """Validate dynamic settings and initial prices for every inventory region.
+
+    Args:
+        snapshot (MarketSnapshot): Initial global prices and represented stocks.
+        regional_prices (Iterable[RegionalPrice] | None): Explicit baselines or None.
+        config (PriceDynamicsConfig): Requested price response settings.
+
+    Returns:
+        tuple: Complete sorted regional baselines and revalidated settings.
+    """
+    if not isinstance(config, PriceDynamicsConfig):
+        raise PriceDynamicsError("config must be a PriceDynamicsConfig")
+
+    try:
+        validated_config = PriceDynamicsConfig.model_validate(
+            config.model_dump(warnings=False)
+        )
+    except ValidationError as exc:
+        raise PriceDynamicsError(
+            f"Invalid price dynamics configuration: {exc}"
+        ) from exc
+
+    regions = sorted({stock.region for stock in snapshot.inventories})
+    prices = (
+        initialize_regional_prices(snapshot, regions)
+        if regional_prices is None
+        else validate_regional_prices(snapshot, regional_prices)
+    )
+
+    expected = {(region, commodity) for region in regions for commodity in Commodity}
+    actual = {(price.region, price.commodity) for price in prices}
+    if expected != actual:
+        raise RegionalPriceError(
+            "Dynamic regional price coverage mismatch: "
+            f"missing={sorted(expected - actual)!r}; "
+            f"extra={sorted(actual - expected)!r}"
+        )
+
+    return prices, validated_config
+
+
+def _update_monthly_prices(
+    monthly: MonthlyResult,
+    crusher_configs: Mapping[str, CrusherConfig],
+    config: PriceDynamicsConfig,
+) -> tuple[MonthlyResult, tuple[RegionalPrice, ...]]:
+    """Record settled pressure and calculate prices for the following month.
+
+    Args:
+        monthly (MonthlyResult): Completed physical activity and observed prices.
+        crusher_configs (Mapping[str, CrusherConfig]): Settled crushers' yield settings.
+        config (PriceDynamicsConfig): Validated price response settings.
+
+    Returns:
+        tuple: Enriched current-month history and next-month regional prices.
+    """
+    inputs, outputs = _executed_crushing_totals(
+        monthly.settlement_results, crusher_configs
+    )
+
+    pressures = calculate_market_pressures(
+        month=monthly.month,
+        regions=sorted(
+            {stock.region for stock in monthly.starting_state.snapshot.inventories}
+        ),
+        flows=monthly.market_flows,
+        trades=monthly.executed_trades,
+        crushed_soybeans_tonnes=inputs,
+        crushing_outputs_tonnes=outputs,
+    )
+
+    next_prices = update_regional_prices(
+        monthly.regional_prices, pressures, config=config
+    )
+    recorded = MonthlyResult.model_validate(
+        {**monthly.model_dump(), "market_pressures": pressures}
+    )
+
+    return recorded, next_prices
+
+
+def _executed_crushing_totals(
+    settlements: tuple[SettlementResult, ...],
+    crusher_configs: Mapping[str, CrusherConfig],
+) -> tuple[dict[Region, float], dict[tuple[Region, Commodity], float]]:
+    """Aggregate executed soybean inputs and configured outputs across crushers.
+
+    Args:
+        settlements (tuple[SettlementResult, ...]): Completed decision results.
+        crusher_configs (Mapping[str, CrusherConfig]): Yields used by settlement.
+
+    Returns:
+        tuple: Finite regional inputs and regional product outputs in tonnes.
+    """
+    inputs: dict[Region, list[float]] = {}
+    outputs: dict[tuple[Region, Commodity], list[float]] = {}
+    for result in settlements:
+        if (
+            result.decision.action != DecisionAction.CRUSH
+            or result.outcome != SettlementOutcome.CRUSH_SETTLED
+        ):
+            continue
+
+        region = result.decision.agent.region
+        config = crusher_configs[result.decision.agent.agent_id]
+        inputs.setdefault(region, []).append(result.executed_tonnes)
+        for commodity, fraction in (
+            (Commodity.SOYBEAN_MEAL, config.meal_yield_fraction),
+            (Commodity.SOYBEAN_OIL, config.oil_yield_fraction),
+        ):
+            outputs.setdefault((region, commodity), []).append(
+                result.executed_tonnes * fraction
+            )
+
+    return (
+        {
+            region: _sum_crushing_quantities(values)
+            for region, values in sorted(inputs.items())
+        },
+        {
+            key: _sum_crushing_quantities(values)
+            for key, values in sorted(outputs.items())
+        },
+    )
+
+
+def _sum_crushing_quantities(quantities: Iterable[float]) -> float:
+    """Sum crushing contributions stably without allowing invalid totals.
+
+    Args:
+        quantities (Iterable[float]): Executed input or output tonnes.
+
+    Returns:
+        float: Finite nonnegative regional total in tonnes.
+    """
+    try:
+        total = math.fsum(sorted(quantities))
+    except OverflowError as exc:
+        raise SimulationError("Executed crushing total overflow") from exc
+
+    if not math.isfinite(total) or total < 0:
+        raise SimulationError("Executed crushing totals must be finite and nonnegative")
+
+    return total
 
 
 def _prepare_monthly_flows(
@@ -270,6 +453,7 @@ def _physical_month(
         physical_cycle=True,
         market_flows=flows,
         executed_trades=trades,
+        regional_prices=regional_prices or (),
     )
 
 
