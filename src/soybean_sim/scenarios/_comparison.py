@@ -175,6 +175,7 @@ def run_argentina_drought_comparison(
     price_dynamics_config: PriceDynamicsConfig,
     regional_prices: Iterable[RegionalPrice] | None = None,
     external_trade_flows: Iterable[ExternalTradeFlow] | None = None,
+    demand_aware_consumption: bool = False,
 ) -> ScenarioComparison:
     """Run baseline and drought with common inputs and independently created agents.
 
@@ -194,6 +195,7 @@ def run_argentina_drought_comparison(
             or None to initialize all inventory regions from global references.
         external_trade_flows (Iterable[ExternalTradeFlow] | None): Common boundary
             transfers, unchanged by drought and replacing endogenous trade matching.
+        demand_aware_consumption (bool): Apply the same demand settlement to both runs.
 
     Returns:
         ScenarioComparison: Validated histories with only drought supply inputs changed.
@@ -222,6 +224,7 @@ def run_argentina_drought_comparison(
         regional_prices=prices,
         price_dynamics_config=price_dynamics_config,
         external_trade_flows=external,
+        demand_aware_consumption=demand_aware_consumption,
     )
     drought = run_simulation(
         initial_state,
@@ -232,6 +235,7 @@ def run_argentina_drought_comparison(
         regional_prices=prices,
         price_dynamics_config=price_dynamics_config,
         external_trade_flows=external,
+        demand_aware_consumption=demand_aware_consumption,
     )
     return compare_simulation_results(baseline, drought, drought_config=drought_config)
 

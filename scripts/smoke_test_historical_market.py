@@ -7,8 +7,8 @@ from pathlib import Path
 
 import historical_market_report as report
 import market_smoke_report
-import scenario_comparison_report
 from rich.console import Console
+from rich.table import Table
 from smoke_test_market import check_accounting
 
 from soybean_sim.agents import CrusherConfig, TraderConfig
@@ -24,8 +24,45 @@ from soybean_sim.scenarios import (
     preflight_historical_market,
     run_historical_market,
 )
+from soybean_sim.simulation import SimulationResult
 
 _REPOSITORY = Path(__file__).resolve().parents[1]
+
+
+def print_demand(console: Console, result: SimulationResult, *, label: str) -> None:
+    """Report modeled requested, fulfilled, and unmet consumption by commodity.
+
+    Args:
+        console (Console): Terminal output destination.
+        result (SimulationResult): Completed demand-aware simulation.
+        label (str): Baseline or drought run label.
+
+    Returns:
+        None: Writes totals without treating unmet demand as consumption.
+    """
+    table = Table(title=f"{label} Consumption (t)", title_justify="left")
+    for heading in ("Commodity", "Requested", "Fulfilled", "Unmet"):
+        table.add_column(heading)
+    records = []
+    for month in result.monthly_results:
+        if month.consumption_results is None:
+            raise AssertionError(f"{label}: missing demand settlement results")
+        records.extend(month.consumption_results)
+    totals = []
+    for commodity in sorted(Commodity):
+        selected = [item for item in records if item.commodity == commodity]
+        requested = math.fsum(item.requested_tonnes for item in selected)
+        fulfilled = math.fsum(item.fulfilled_tonnes for item in selected)
+        unmet = math.fsum(item.unmet_tonnes for item in selected)
+        assert math.isclose(requested, fulfilled + unmet, rel_tol=1e-12, abs_tol=1e-8)
+        totals.append((requested, fulfilled, unmet))
+        table.add_row(
+            commodity.value, f"{requested:,.2f}", f"{fulfilled:,.2f}", f"{unmet:,.2f}"
+        )
+    table.add_row(
+        "TOTAL", *(f"{math.fsum(values):,.2f}" for values in zip(*totals, strict=True))
+    )
+    console.print(table)
 
 
 def create_settings(
@@ -93,7 +130,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     stage = "Historical data preparation"
     try:
         prepared = load_historical_market(
-            options.usda_path, options.world_bank_path, include_historical_trade=True
+            options.usda_path, options.world_bank_path, include_historical_trade=False
         )
         stage = "Historical capacity calibration"
         crushers, traders, pricing = create_settings(prepared)
@@ -106,6 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             crusher_configs=crushers,
             trader_configs=traders,
             price_dynamics_config=pricing,
+            calibration=True,
         )
         report.print_preflight(console, checked)
         if not checked.can_run:
@@ -116,6 +154,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             console.print("Overall: BLOCKED", style="bold red")
             return 1
         stage = "Historical physical execution"
+        console.print(
+            "Historical calibration: demand-aware settlement; "
+            "agent trade matching enabled"
+        )
         result = run_historical_market(
             prepared,
             crusher_configs=crushers,
@@ -127,6 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"crusher-{region.value}": config for region, config in crushers.items()
         }
         check_accounting(result, configs)
+        assert len(result.monthly_results) == len(prepared.metadata.months)
         residual = math.fsum(
             item.residual_output_tonnes
             for month in result.monthly_results
@@ -137,23 +180,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"{residual:,.2f} t "
             "(unmodeled output, outside traded inventories)."
         )
-        report.print_boundary_accounting(
-            console,
-            (
-                flow
-                for month in result.monthly_results
-                for flow in month.external_trade_flows
-            ),
-            label="Executed Boundary Trade",
-        )
         console.print(
             "Physical execution: PASS (complete history and accounting)",
             style="bold green",
         )
-        console.print(
-            "Monthly activity counts matched interregional trades; "
-            "boundary movements are reported separately."
-        )
+        console.print(f"Simulated months: {len(result.monthly_results)}")
+        print_demand(console, result, label="Baseline")
         for table in (
             market_smoke_report.monthly_activity_table(result),
             market_smoke_report.regional_price_table(result),
@@ -171,23 +203,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             check_accounting(comparison.baseline, configs)
             check_accounting(comparison.drought, configs)
+            assert comparison.baseline == result
+            assert len(comparison.drought.monthly_results) == len(
+                prepared.metadata.months
+            )
             console.print(
                 "Baseline/drought comparison: PASS (both complete runs)",
                 style="bold green",
             )
-            scenario_comparison_report.print_report(
-                console,
-                comparison,
-                completed=[
-                    "Historical baseline and drought complete",
-                    "Physical accounting validity",
-                ],
-                verbose=options.verbose,
+            print_demand(console, comparison.drought, label="Drought")
+            trade_count = sum(
+                len(month.executed_trades)
+                for month in comparison.drought.monthly_results
+            )
+            console.print(
+                f"Drought simulated months: {len(comparison.drought.monthly_results)}; "
+                f"executed trades: {trade_count}"
             )
         else:
             console.print("Baseline/drought comparison: NOT REQUESTED (use --compare)")
         console.print(
-            "Overall: PASS (execution validated, not economically calibrated)",
+            "Overall: PASS (modeled scenario; not a historical reconstruction "
+            "or forecast)",
             style="bold green",
         )
         return 0

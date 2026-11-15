@@ -49,6 +49,7 @@ def preflight_historical_market(
     crusher_configs: Mapping[Region, CrusherConfig],
     trader_configs: Mapping[Region, TraderConfig],
     price_dynamics_config: PriceDynamicsConfig,
+    calibration: bool = False,
 ) -> HistoricalPreflight:
     """Screen data integrity and optimistic product budgets without executing a month.
 
@@ -57,12 +58,15 @@ def preflight_historical_market(
         crusher_configs (Mapping[Region, CrusherConfig]): Explicit regional capacities.
         trader_configs (Mapping[Region, TraderConfig]): Explicit regional trading rules.
         price_dynamics_config (PriceDynamicsConfig): Explicit regional price settings.
+        calibration (bool): Validate structure without requiring all demand fulfilled.
 
     Returns:
         HistoricalPreflight: Warnings and blockers; clearance is not execution success.
     """
     metadata = None
     try:
+        if type(calibration) is not bool:
+            raise ValueError("calibration must be a bool")
         if isinstance(prepared, HistoricalMarketInputs):
             metadata = HistoricalMetadata.model_validate(
                 prepared.metadata.model_dump(warnings=False)
@@ -71,13 +75,25 @@ def preflight_historical_market(
         crushers, traders, _ = _validated_settings(
             crusher_configs, trader_configs, price_dynamics_config
         )
-        errors = _product_deficits(data, crushers, traders)
+        errors = () if calibration else _product_deficits(data, crushers, traders)
+        assumptions = tuple(
+            warning
+            for warning in data.metadata.assumptions
+            if not (
+                calibration
+                and data.metadata.include_historical_trade
+                and warning.startswith("USDA annual imports/exports")
+            )
+        )
         return HistoricalPreflight(
             metadata=data.metadata,
             warnings=(
-                *data.metadata.assumptions,
+                *assumptions,
                 (
-                    "Screening assumes full Crusher utilization with boundary "
+                    "Calibration records unmet consumption and uses agent trade "
+                    "matching; USDA gross trade is reference data only."
+                    if calibration
+                    else "Screening assumes full Crusher utilization with boundary "
                     "imports and exports. Actual margin decisions can still prevent "
                     "settlement; clearance does not guarantee physical execution."
                     if data.metadata.include_historical_trade
@@ -494,6 +510,7 @@ def run_historical_market(
         crusher_configs=crusher_configs,
         trader_configs=trader_configs,
         price_dynamics_config=price_dynamics_config,
+        calibration=True,
     )
     if not report.can_run:
         raise HistoricalMarketError(report)
@@ -511,11 +528,8 @@ def run_historical_market(
             prepared.state,
             agents,
             monthly_flows=prepared.flows,
-            external_trade_flows=(
-                prepared.external_trade_flows
-                if prepared.metadata.include_historical_trade
-                else None
-            ),
+            external_trade_flows=None,
+            demand_aware_consumption=True,
             months=len(prepared.metadata.months),
             price_dynamics_config=price_config,
             crusher_configs={
@@ -565,6 +579,7 @@ def compare_historical_market(
         crusher_configs=crusher_configs,
         trader_configs=trader_configs,
         price_dynamics_config=price_dynamics_config,
+        calibration=True,
     )
     if not report.can_run:
         raise HistoricalMarketError(report)
@@ -600,11 +615,8 @@ def compare_historical_market(
                 f"crusher-{region.value}": config for region, config in crushers.items()
             },
             price_dynamics_config=price_config,
-            external_trade_flows=(
-                prepared.external_trade_flows
-                if prepared.metadata.include_historical_trade
-                else None
-            ),
+            external_trade_flows=None,
+            demand_aware_consumption=True,
         )
     except (
         CrusherDecisionError,

@@ -42,7 +42,7 @@ from soybean_sim.market import (
 from soybean_sim.models import Commodity, MarketSnapshot, Region
 
 from . import _calendar
-from ._models import MonthlyResult, SimulationResult
+from ._models import ConsumptionResult, MonthlyResult, SimulationResult
 
 _MONTHS_PER_YEAR: Final = 12
 _RegisteredAgent = tuple[AgentIdentity, Agent]
@@ -63,6 +63,7 @@ def run_simulation(
     monthly_flows: Iterable[MarketFlow] | None = None,
     price_dynamics_config: PriceDynamicsConfig | None = None,
     external_trade_flows: Iterable[ExternalTradeFlow] | None = None,
+    demand_aware_consumption: bool = False,
 ) -> SimulationResult:
     """Run monthly decisions and settlement, preserving constant global prices.
 
@@ -86,12 +87,18 @@ def run_simulation(
         external_trade_flows: Optional gross boundary schedule replacing agent trade
             matching. Imports precede decisions; exports follow consumption. None
             preserves ordinary interregional matching.
+        demand_aware_consumption: Fulfill consumption only up to available stocks and
+            record unmet demand. Requires physical mode; default settlement is strict.
 
     Returns:
         Initial state, complete monthly history, and the last month's ending state.
         Recorded market states retain global prices; agent views are temporary.
     """
     initial = MarketState.from_snapshot(initial_state.snapshot)
+    if type(demand_aware_consumption) is not bool:
+        raise SimulationError("demand_aware_consumption must be a bool")
+    if demand_aware_consumption and monthly_flows is None:
+        raise SimulationError("demand-aware consumption requires monthly_flows")
     _validate_duration(initial.snapshot.month, months)
     registered_agents, processing_configs = _prepare_agents(
         initial, agents, crusher_configs
@@ -153,6 +160,7 @@ def run_simulation(
                 None
                 if boundary_schedule is None
                 else boundary_schedule.get(state.snapshot.month, ()),
+                demand_aware_consumption,
             )
 
         if price_dynamics_config is not None:
@@ -435,6 +443,7 @@ def _physical_month(
     flows: tuple[MarketFlow, ...],
     regional_prices: tuple[RegionalPrice, ...] | None,
     external_flows: tuple[ExternalTradeFlow, ...] | None = None,
+    demand_aware_consumption: bool = False,
 ) -> MonthlyResult:
     """Settle production, imports, decisions, crushing, consumption, and exports.
 
@@ -445,6 +454,7 @@ def _physical_month(
         flows: Validated current-month flows, including reference production.
         regional_prices: Current regional values or None for global observations.
         external_flows: Boundary schedule replacing agent matching, or None.
+        demand_aware_consumption: Whether to record and cap consumption requests.
 
     Returns:
         Complete physical activity history with the opening and final states.
@@ -475,9 +485,40 @@ def _physical_month(
     )
 
     traded = settle_matched_trades(crushed, trades)
-    ending = settle_monthly_flows(
-        traded, (flow for flow in flows if flow.flow_type == MarketFlowType.CONSUMPTION)
+    consumption = tuple(
+        flow for flow in flows if flow.flow_type == MarketFlowType.CONSUMPTION
     )
+    results = None
+    if demand_aware_consumption:
+        requests = {
+            (flow.region, flow.commodity): flow.quantity_tonnes for flow in consumption
+        }
+        records = []
+        for stock in traded.snapshot.inventories:
+            requested = requests.get((stock.region, stock.commodity), 0)
+            fulfilled_tonnes = min(stock.quantity_tonnes, requested)
+            records.append(
+                ConsumptionResult(
+                    month=opening.snapshot.month,
+                    region=stock.region,
+                    commodity=stock.commodity,
+                    available_tonnes=stock.quantity_tonnes,
+                    requested_tonnes=requested,
+                    fulfilled_tonnes=fulfilled_tonnes,
+                    unmet_tonnes=requested - fulfilled_tonnes,
+                )
+            )
+        results = tuple(records)
+        fulfilled = {
+            (item.region, item.commodity): item.fulfilled_tonnes for item in results
+        }
+        consumption = tuple(
+            flow.model_copy(
+                update={"quantity_tonnes": fulfilled[flow.region, flow.commodity]}
+            )
+            for flow in consumption
+        )
+    ending = settle_monthly_flows(traded, consumption)
     if external_flows is not None:
         ending = settle_external_trades(
             ending, (flow for flow in external_flows if not flow.is_import)
@@ -494,6 +535,7 @@ def _physical_month(
         executed_trades=trades,
         external_trade_flows=external_flows or (),
         regional_prices=regional_prices or (),
+        consumption_results=results,
     )
 
 

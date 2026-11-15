@@ -283,6 +283,14 @@ def check_accounting(
             (stock.region, stock.commodity): []
             for stock in monthly.starting_state.snapshot.inventories
         }
+        consumption = (
+            None
+            if monthly.consumption_results is None
+            else {
+                (item.region, item.commodity): item
+                for item in monthly.consumption_results
+            }
+        )
         for flow in monthly.market_flows:
             if (
                 flow.flow_type == MarketFlowType.SUPPLY
@@ -290,7 +298,19 @@ def check_accounting(
             ):
                 changes[flow.region, flow.commodity].append(flow.quantity_tonnes)
             elif flow.flow_type == MarketFlowType.CONSUMPTION:
-                changes[flow.region, flow.commodity].append(-flow.quantity_tonnes)
+                quantity = flow.quantity_tonnes
+                if consumption is not None:
+                    item = consumption[flow.region, flow.commodity]
+                    assert item.requested_tonnes == quantity
+                    assert item.fulfilled_tonnes <= item.available_tonnes
+                    assert math.isclose(
+                        item.requested_tonnes,
+                        item.fulfilled_tonnes + item.unmet_tonnes,
+                        rel_tol=_REL_TOLERANCE,
+                        abs_tol=_ABS_TOLERANCE,
+                    )
+                    quantity = item.fulfilled_tonnes
+                changes[flow.region, flow.commodity].append(-quantity)
         for settled in monthly.settlement_results:
             if settled.decision.action != DecisionAction.CRUSH:
                 continue
