@@ -4,7 +4,7 @@ from types import ModuleType
 
 import pytest
 
-from soybean_sim.market import ExternalTradeError, FlowSettlementError, MarketFlowType
+from soybean_sim.market import MarketFlowType
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
     ArgentinaDroughtConfig,
@@ -85,13 +85,12 @@ def test_historical_terminal_complete_runs(
     assert ("Original USDA Marketing-Year" in output) == verbose
 
 
-def test_historical_terminal_blocked_stock_budget(
+def test_historical_terminal_reports_unmet_demand(
     historical_paths: tuple[Path, Path],
     historical_script: ModuleType,
     capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Retain real source quantities and return nonzero without claiming execution."""
+    """Report unmet demand when source consumption exceeds physical availability."""
     path = historical_paths[0]
     content = path.read_text().replace(
         "125,Domestic Consumption,08,(1000 MT),0.012",
@@ -99,11 +98,6 @@ def test_historical_terminal_blocked_stock_budget(
     )
     path.write_text(content)
 
-    def must_not_execute(*args: object, **kwargs: object) -> None:
-        """Catch accidental engine execution after a blocking capacity screen."""
-        pytest.fail("Blocked historical inputs must not be executed")
-
-    monkeypatch.setattr(historical_script, "run_historical_market", must_not_execute)
     assert (
         historical_script.main(
             [
@@ -113,14 +107,12 @@ def test_historical_terminal_blocked_stock_budget(
                 str(historical_paths[1]),
             ]
         )
-        == 1
+        == 0
     )
     output = capsys.readouterr().out
-    assert "shortfall" in output
-    assert "Physical execution: NOT RUN" in output
-    assert "Overall: BLOCKED" in output
-    assert "Overall: PASS" not in output
-    assert "Physical execution: PASS" not in output
+    assert "Unmet" in output
+    assert "Physical execution: PASS" in output
+    assert "Overall: PASS" in output
 
 
 def test_missing_local_source_is_explicit(
@@ -206,52 +198,24 @@ def test_optional_real_historical_preflight(historical_script: ModuleType) -> No
         config.monthly_capacity_tonnes == annual_crush[region] / 12
         for region, config in crushers.items()
     )
-    report = preflight_historical_market(
-        prepared,
-        crusher_configs=crushers,
-        trader_configs=traders,
-        price_dynamics_config=pricing,
+    settings = dict(
+        crusher_configs=crushers, trader_configs=traders, price_dynamics_config=pricing
     )
+    report = preflight_historical_market(prepared, **settings, calibration=True)
     assert report.metadata == prepared.metadata
     assert report.warnings
-    if not report.can_run:
-        assert all("shortfall" in item for item in report.blocking_errors)
-        with pytest.raises(HistoricalMarketError):
-            run_historical_market(
-                prepared,
-                crusher_configs=crushers,
-                trader_configs=traders,
-                price_dynamics_config=pricing,
-            )
-    else:
-        original = prepared.model_dump_json()
-        settings = dict(
-            crusher_configs=crushers,
-            trader_configs=traders,
-            price_dynamics_config=pricing,
-        )
-        try:
-            result = run_historical_market(prepared, **settings)
-        except HistoricalMarketError as blocked:
-            assert isinstance(
-                blocked.__cause__, (FlowSettlementError, ExternalTradeError)
-            )
-            with pytest.raises(HistoricalMarketError) as repeated:
-                run_historical_market(prepared, **settings)
-            assert str(repeated.value) == str(blocked)
-            with pytest.raises(HistoricalMarketError) as paired:
-                compare_historical_market(
-                    prepared, **settings, drought_config=ArgentinaDroughtConfig()
-                )
-            assert str(paired.value) == str(blocked)
-        else:
-            assert len(result.monthly_results) == 12
-            assert result == run_historical_market(prepared, **settings)
-            historical_script.check_accounting(
-                result,
-                {
-                    f"crusher-{region.value}": config
-                    for region, config in crushers.items()
-                },
-            )
-        assert prepared.model_dump_json() == original
+    assert report.can_run
+    original = prepared.model_dump_json()
+    result = run_historical_market(prepared, **settings)
+    assert len(result.monthly_results) == 12
+    assert result == run_historical_market(prepared, **settings)
+    comparison = compare_historical_market(
+        prepared, **settings, drought_config=ArgentinaDroughtConfig()
+    )
+    assert comparison.baseline == result
+    assert all(not month.external_trade_flows for month in result.monthly_results)
+    historical_script.check_accounting(
+        result,
+        {f"crusher-{region.value}": config for region, config in crushers.items()},
+    )
+    assert prepared.model_dump_json() == original

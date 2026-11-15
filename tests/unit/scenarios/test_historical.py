@@ -370,8 +370,15 @@ def test_capacity_bound_blocks_without_crediting_reference_production(
         "reference production",
     ):
         assert phrase in message
-    with pytest.raises(HistoricalMarketError):
-        run_historical_market(prepared, **settings)
+    result = run_historical_market(prepared, **settings)
+    oil = next(
+        item
+        for item in result.monthly_results[0].consumption_results
+        if item.region == Region.BRAZIL and item.commodity == Commodity.SOYBEAN_OIL
+    )
+    assert oil.requested_tonnes == 100
+    assert oil.unmet_tonnes > 0
+    assert oil.fulfilled_tonnes <= 2
 
 
 @pytest.mark.parametrize("paired", [False, True])
@@ -452,12 +459,12 @@ def test_budget_overflow_identifies_market_and_month(
     assert "1e+308" in message
 
 
-def test_preflight_clearance_does_not_guarantee_actual_execution(
+def test_calibration_records_shortage_after_clear_preflight(
     balances: tuple[MarketBalance, ...],
     prices: tuple[CommodityPrice, ...],
     settings: dict[str, Any],
 ) -> None:
-    """Let the existing margin rule produce a diagnosed shortage after a valid screen.
+    """Let margin-based abstention produce recorded unmet demand after screening.
 
     Args:
         balances (tuple[MarketBalance, ...]): Source records to remove product buffers.
@@ -465,7 +472,7 @@ def test_preflight_clearance_does_not_guarantee_actual_execution(
         settings (dict[str, Any]): Capacity bound sufficient for demand in isolation.
 
     Returns:
-        None: Confirms failures include the observed month and quantity.
+        None: Confirms unmet demand is retained and stock stays nonnegative.
     """
     annual = tuple(
         item.model_copy(update={"beginning_stocks_tonnes": 0})
@@ -492,11 +499,17 @@ def test_preflight_clearance_does_not_guarantee_actual_execution(
         months=1,
     )
     assert preflight_historical_market(prepared, **settings).can_run
-    with pytest.raises(
-        HistoricalMarketError, match="last observed decisions: baseline 2025-01-01"
-    ) as caught:
-        run_historical_market(prepared, **settings)
-    assert "consumption 2 tonnes exceeds available 0 tonnes" in str(caught.value)
+    result = run_historical_market(prepared, **settings)
+    meal = next(
+        item
+        for item in result.monthly_results[0].consumption_results
+        if item.region == Region.ARGENTINA and item.commodity == Commodity.SOYBEAN_MEAL
+    )
+    assert (meal.requested_tonnes, meal.fulfilled_tonnes, meal.unmet_tonnes) == (
+        2,
+        0,
+        2,
+    )
 
 
 def test_feasible_execution_and_drought_compatibility(
@@ -537,12 +550,12 @@ def test_feasible_execution_and_drought_compatibility(
     assert prepared.model_dump_json() == original
 
 
-def test_drought_execution_can_fail_after_a_feasible_baseline(
+def test_drought_records_unmet_demand_after_a_feasible_baseline(
     balances: tuple[MarketBalance, ...],
     prices: tuple[CommodityPrice, ...],
     settings: dict[str, Any],
 ) -> None:
-    """Preserve baseline success while diagnosing a drought-specific product shortage.
+    """Preserve baseline success while recording a drought-specific shortage.
 
     Args:
         balances (tuple[MarketBalance, ...]): Source-style synthetic observations.
@@ -550,7 +563,7 @@ def test_drought_execution_can_fail_after_a_feasible_baseline(
         settings (dict[str, Any]): Common regional configuration templates.
 
     Returns:
-        None: Confirms no partially successful ScenarioComparison is returned.
+        None: Confirms the paired result records drought-specific unmet demand.
     """
     records = tuple(
         item.model_copy(
@@ -585,12 +598,13 @@ def test_drought_execution_can_fail_after_a_feasible_baseline(
         months=1,
     )
     assert run_historical_market(prepared, **settings).monthly_results
-    with pytest.raises(
-        HistoricalMarketError, match="last observed decisions: drought 2025-01-01"
-    ):
-        compare_historical_market(
-            prepared, **settings, drought_config=ArgentinaDroughtConfig()
-        )
+    comparison = compare_historical_market(
+        prepared, **settings, drought_config=ArgentinaDroughtConfig()
+    )
+    baseline = comparison.baseline.monthly_results[0].consumption_results
+    drought = comparison.drought.monthly_results[0].consumption_results
+    assert sum(item.unmet_tonnes for item in baseline) == 0
+    assert sum(item.unmet_tonnes for item in drought) > 0
 
 
 def test_preparation_is_order_independent_and_supports_explicit_weights(

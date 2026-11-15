@@ -177,7 +177,7 @@ def test_historical_boundary_allocation_and_paired_accounting(
     historical_paths: tuple[Path, Path],
     historical_script: ModuleType,
 ) -> None:
-    """Use annual trade once in reproducible twelve-month paired histories."""
+    """Keep historical trade as reference data in reproducible calibration runs."""
     csv_path = historical_paths[0]
     csv_path.write_text(
         csv_path.read_text()
@@ -207,21 +207,17 @@ def test_historical_boundary_allocation_and_paired_accounting(
     assert len(result.monthly_results) == 12
     assert comparison.baseline == result
     for history in (comparison.baseline, comparison.drought):
-        assert (
-            tuple(
-                flow
-                for month in history.monthly_results
-                for flow in month.external_trade_flows
-            )
-            == prepared.external_trade_flows
+        assert all(not month.external_trade_flows for month in history.monthly_results)
+        assert all(
+            month.consumption_results is not None for month in history.monthly_results
         )
         historical_script.check_accounting(
             history,
             {f"crusher-{region.value}": config for region, config in crushers.items()},
         )
     market = comparison.monthly_metrics()[0].markets[0]
-    assert market.imports_tonnes.baseline == 1
-    assert market.exports_tonnes.baseline == 0.5
+    assert market.imports_tonnes.baseline == 0
+    assert market.exports_tonnes.baseline == 0
     assert prepared.model_dump_json() == before
     changed = prepared.model_copy(
         update={
