@@ -17,6 +17,7 @@ from soybean_sim.agents import (
     DecisionAction,
 )
 from soybean_sim.market import (
+    ExternalTradeFlow,
     MarketFlow,
     MarketFlowType,
     MarketState,
@@ -30,10 +31,12 @@ from soybean_sim.market import (
     initialize_regional_prices,
     match_interregional_trades,
     settle_decisions,
+    settle_external_trades,
     settle_matched_trades,
     settle_monthly_flows,
     snapshot_for_region,
     update_regional_prices,
+    validate_external_trades,
     validate_regional_prices,
 )
 from soybean_sim.models import Commodity, MarketSnapshot, Region
@@ -59,6 +62,7 @@ def run_simulation(
     regional_prices: Iterable[RegionalPrice] | None = None,
     monthly_flows: Iterable[MarketFlow] | None = None,
     price_dynamics_config: PriceDynamicsConfig | None = None,
+    external_trade_flows: Iterable[ExternalTradeFlow] | None = None,
 ) -> SimulationResult:
     """Run monthly decisions and settlement, preserving constant global prices.
 
@@ -79,6 +83,9 @@ def run_simulation(
             cycle. Generate flows separately; all records must fit this run's period.
         price_dynamics_config: Optional price response settings requiring physical
             mode. Missing regional prices are initialized for all inventory regions.
+        external_trade_flows: Optional gross boundary schedule replacing agent trade
+            matching. Imports precede decisions; exports follow consumption. None
+            preserves ordinary interregional matching.
 
     Returns:
         Initial state, complete monthly history, and the last month's ending state.
@@ -105,6 +112,12 @@ def run_simulation(
         )
 
     flow_schedule = _prepare_monthly_flows(initial.snapshot, monthly_flows, months)
+    boundary_schedule = _prepare_external_schedule(
+        initial.snapshot,
+        external_trade_flows,
+        months,
+        physical=flow_schedule is not None,
+    )
     state = initial
     history: list[MonthlyResult] = []
     for month_index in range(months):
@@ -137,6 +150,9 @@ def run_simulation(
                 processing_configs,
                 flow_schedule.get(state.snapshot.month, ()),
                 current_regional_prices,
+                None
+                if boundary_schedule is None
+                else boundary_schedule.get(state.snapshot.month, ()),
             )
 
         if price_dynamics_config is not None:
@@ -230,6 +246,7 @@ def _update_monthly_prices(
         ),
         flows=monthly.market_flows,
         trades=monthly.executed_trades,
+        external_trades=monthly.external_trade_flows,
         crushed_soybeans_tonnes=inputs,
         crushing_outputs_tonnes=outputs,
     )
@@ -417,8 +434,9 @@ def _physical_month(
     crusher_configs: Mapping[str, CrusherConfig],
     flows: tuple[MarketFlow, ...],
     regional_prices: tuple[RegionalPrice, ...] | None,
+    external_flows: tuple[ExternalTradeFlow, ...] | None = None,
 ) -> MonthlyResult:
-    """Apply production, decisions, crushing, trades, and consumption in that order.
+    """Settle production, imports, decisions, crushing, consumption, and exports.
 
     Args:
         opening: State before this month's physical activity.
@@ -426,6 +444,7 @@ def _physical_month(
         crusher_configs: Processing settings keyed by crusher ID.
         flows: Validated current-month flows, including reference production.
         regional_prices: Current regional values or None for global observations.
+        external_flows: Boundary schedule replacing agent matching, or None.
 
     Returns:
         Complete physical activity history with the opening and final states.
@@ -433,6 +452,10 @@ def _physical_month(
     produced = settle_monthly_flows(
         opening, (flow for flow in flows if flow.flow_type == MarketFlowType.SUPPLY)
     )
+    if external_flows is not None:
+        produced = settle_external_trades(
+            produced, (flow for flow in external_flows if flow.is_import)
+        )
 
     decisions = _collect_decisions(
         registered_agents, produced.snapshot, regional_prices
@@ -443,14 +466,22 @@ def _physical_month(
         (decision for decision in decisions if decision.action == DecisionAction.CRUSH),
         crusher_configs=crusher_configs,
     )
-    trades = match_interregional_trades(
-        decisions, crushed.snapshot.inventories, month=opening.snapshot.month
+    trades = (
+        ()
+        if external_flows is not None
+        else match_interregional_trades(
+            decisions, crushed.snapshot.inventories, month=opening.snapshot.month
+        )
     )
 
     traded = settle_matched_trades(crushed, trades)
     ending = settle_monthly_flows(
         traded, (flow for flow in flows if flow.flow_type == MarketFlowType.CONSUMPTION)
     )
+    if external_flows is not None:
+        ending = settle_external_trades(
+            ending, (flow for flow in external_flows if not flow.is_import)
+        )
 
     return MonthlyResult(
         month=opening.snapshot.month,
@@ -461,8 +492,49 @@ def _physical_month(
         physical_cycle=True,
         market_flows=flows,
         executed_trades=trades,
+        external_trade_flows=external_flows or (),
         regional_prices=regional_prices or (),
     )
+
+
+def _prepare_external_schedule(
+    snapshot: MarketSnapshot,
+    flows: Iterable[ExternalTradeFlow] | None,
+    months: int,
+    *,
+    physical: bool,
+) -> dict[date, tuple[ExternalTradeFlow, ...]] | None:
+    """Validate boundary coverage and periods before executing any month.
+
+    Args:
+        snapshot (MarketSnapshot): Initial month and regional inventories.
+        flows (Iterable[ExternalTradeFlow] | None): Exclusive boundary schedule.
+        months (int): Validated duration in calendar months.
+        physical (bool): Whether monthly physical settlement is enabled.
+
+    Returns:
+        dict | None: Sorted transfers by month, or None for ordinary trade matching.
+    """
+    if flows is None:
+        return None
+    if not physical:
+        raise SimulationError("External trade requires monthly_flows physical mode")
+    inventories = {(item.region, item.commodity) for item in snapshot.inventories}
+    grouped: dict[date, list[ExternalTradeFlow]] = {}
+    for flow in validate_external_trades(flows):
+        offset = (
+            (flow.month.year - snapshot.month.year) * _MONTHS_PER_YEAR
+            + flow.month.month
+            - snapshot.month.month
+        )
+        if not 0 <= offset < months:
+            raise SimulationError(
+                f"External trade month {flow.month} outside run period"
+            )
+        if (flow.region, flow.commodity) not in inventories:
+            raise SimulationError("External trade inventory is not represented")
+        grouped.setdefault(flow.month, []).append(flow)
+    return {month: tuple(items) for month, items in grouped.items()}
 
 
 def _validate_duration(first_month: date, months: int) -> None:

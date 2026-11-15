@@ -335,18 +335,20 @@ def _trade_totals(monthly: MonthlyResult, key: _Key) -> tuple[float, float]:
         tuple[float, float]: Imports and exports in tonnes; absent executions mean zero.
     """
     region, commodity = key
-    return (
-        _sum(
-            trade.quantity_tonnes
-            for trade in monthly.executed_trades
-            if trade.destination_region == region and trade.commodity == commodity
-        ),
-        _sum(
-            trade.quantity_tonnes
-            for trade in monthly.executed_trades
-            if trade.source_region == region and trade.commodity == commodity
-        ),
-    )
+    imports = [
+        trade.quantity_tonnes
+        for trade in monthly.executed_trades
+        if trade.destination_region == region and trade.commodity == commodity
+    ]
+    exports = [
+        trade.quantity_tonnes
+        for trade in monthly.executed_trades
+        if trade.source_region == region and trade.commodity == commodity
+    ]
+    for trade in monthly.external_trade_flows:
+        if (trade.region, trade.commodity) == key:
+            (imports if trade.is_import else exports).append(trade.quantity_tonnes)
+    return _sum(imports), _sum(exports)
 
 
 def _sum(quantities: Iterable[float]) -> float:

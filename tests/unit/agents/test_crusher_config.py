@@ -12,6 +12,7 @@ def test_defaults_and_required_inputs() -> None:
         monthly_capacity_tonnes=1000, processing_cost_usd_per_tonne=0
     )
     assert (config.meal_yield_fraction, config.oil_yield_fraction) == (0.8, 0.2)
+    assert config.residual_yield_fraction == 0
     assert (
         config.low_margin_threshold_usd_per_tonne,
         config.high_margin_threshold_usd_per_tonne,
@@ -36,6 +37,7 @@ def test_defaults_and_required_inputs() -> None:
         "processing_cost_usd_per_tonne",
         "meal_yield_fraction",
         "oil_yield_fraction",
+        "residual_yield_fraction",
         "low_margin_threshold_usd_per_tonne",
         "high_margin_threshold_usd_per_tonne",
         "full_utilization_threshold_usd_per_tonne",
@@ -67,6 +69,7 @@ def test_finite_numeric_fields(field: str, value: Any) -> None:
         ("processing_cost_usd_per_tonne", -1),
         ("meal_yield_fraction", -0.1),
         ("oil_yield_fraction", -0.1),
+        ("residual_yield_fraction", -0.1),
     ],
 )
 def test_capacity_cost_and_yield_bounds(field: str, value: float) -> None:

@@ -298,6 +298,7 @@ def _settle_crush(
         executed_tonnes=executed,
         unfulfilled_tonnes=decision.quantity_tonnes - executed,
         outcome=SettlementOutcome.CRUSH_SETTLED,
+        residual_output_tonnes=executed * config.residual_yield_fraction,
     )
 
 

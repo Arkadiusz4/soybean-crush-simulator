@@ -296,6 +296,24 @@ def check_accounting(
                 continue
             region = settled.decision.agent.region
             config = configs[settled.decision.agent.agent_id]
+            assert math.isclose(
+                settled.residual_output_tonnes,
+                settled.executed_tonnes * config.residual_yield_fraction,
+                rel_tol=_REL_TOLERANCE,
+                abs_tol=_ABS_TOLERANCE,
+            )
+            assert math.isclose(
+                settled.executed_tonnes,
+                math.fsum(
+                    (
+                        settled.executed_tonnes * config.meal_yield_fraction,
+                        settled.executed_tonnes * config.oil_yield_fraction,
+                        settled.residual_output_tonnes,
+                    )
+                ),
+                rel_tol=_REL_TOLERANCE,
+                abs_tol=_ABS_TOLERANCE,
+            )
             changes[region, Commodity.SOYBEANS].append(-settled.executed_tonnes)
             changes[region, Commodity.SOYBEAN_MEAL].append(
                 settled.executed_tonnes * config.meal_yield_fraction
@@ -307,6 +325,10 @@ def check_accounting(
             changes[trade.source_region, trade.commodity].append(-trade.quantity_tonnes)
             changes[trade.destination_region, trade.commodity].append(
                 trade.quantity_tonnes
+            )
+        for trade in monthly.external_trade_flows:
+            changes[trade.region, trade.commodity].append(
+                trade.quantity_tonnes if trade.is_import else -trade.quantity_tonnes
             )
         opening = {
             (stock.region, stock.commodity): stock.quantity_tonnes

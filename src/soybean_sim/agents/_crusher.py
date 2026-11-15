@@ -30,6 +30,8 @@ class CrusherConfig(BaseModel):
         meal_yield_fraction (float): Meal output tonnes per input tonne; defaults to
             0.80.
         oil_yield_fraction (float): Oil output tonnes per input tonne; defaults to 0.20.
+        residual_yield_fraction (float): Unmodeled by-products/losses per input tonne;
+            defaults to zero and is recorded outside traded inventories.
         low_margin_threshold_usd_per_tonne (float): Net margin at or below which
             processing stops, in USD per input tonne.
         high_margin_threshold_usd_per_tonne (float): Net margin separating low and
@@ -50,6 +52,7 @@ class CrusherConfig(BaseModel):
     processing_cost_usd_per_tonne: _NonNegativeFinite
     meal_yield_fraction: _NonNegativeFinite = 0.80
     oil_yield_fraction: _NonNegativeFinite = 0.20
+    residual_yield_fraction: _NonNegativeFinite = 0.0
     low_margin_threshold_usd_per_tonne: _Finite = 0
     high_margin_threshold_usd_per_tonne: _Finite = 30
     full_utilization_threshold_usd_per_tonne: _Finite = 60
@@ -59,19 +62,21 @@ class CrusherConfig(BaseModel):
 
     @model_validator(mode="after")
     def yields_conserve_input(self) -> Self:
-        """Require meal and oil yields to sum to one within float tolerance.
+        """Require tracked products and explicit residual to account for all input.
 
         Returns:
             Self: The validated crusher configuration instance.
         """
         if not math.isclose(
-            self.meal_yield_fraction + self.oil_yield_fraction,
+            self.meal_yield_fraction
+            + self.oil_yield_fraction
+            + self.residual_yield_fraction,
             1,
             rel_tol=0,
             abs_tol=_YIELD_SUM_TOLERANCE,
         ):
             raise ValueError(
-                "meal and oil yield fractions must sum to 1 within "
+                "meal, oil, and residual yield fractions must sum to 1 within "
                 f"{_YIELD_SUM_TOLERANCE:g}"
             )
 

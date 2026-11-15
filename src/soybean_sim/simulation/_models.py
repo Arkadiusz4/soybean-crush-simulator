@@ -9,12 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from soybean_sim.agents import AgentDecision, DecisionAction
 from soybean_sim.market import (
+    ExternalTradeFlow,
     MarketFlow,
     MarketPressure,
     MarketState,
     RegionalPrice,
     SettlementResult,
     TradeExecution,
+    validate_external_trades,
 )
 
 from . import _calendar
@@ -37,6 +39,7 @@ class MonthlyResult(BaseModel):
         executed_trades: Matched and settled physical trades.
         regional_prices: Regional values observed by agents during this month.
         market_pressures: Physical supply/demand signals used for next-month pricing.
+        external_trade_flows: Fully executed movements across the clearing boundary.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -51,6 +54,7 @@ class MonthlyResult(BaseModel):
     executed_trades: tuple[TradeExecution, ...] = ()
     regional_prices: tuple[RegionalPrice, ...] = ()
     market_pressures: tuple[MarketPressure, ...] = ()
+    external_trade_flows: tuple[ExternalTradeFlow, ...] = ()
 
     @model_validator(mode="after")
     def monthly_records_are_consistent(self) -> Self:
@@ -93,7 +97,9 @@ class MonthlyResult(BaseModel):
         Returns:
             The validated monthly result.
         """
-        if not self.physical_cycle and (self.market_flows or self.executed_trades):
+        if not self.physical_cycle and (
+            self.market_flows or self.executed_trades or self.external_trade_flows
+        ):
             raise ValueError("physical activity records require physical_cycle=True")
 
         if any(flow.month != self.month for flow in self.market_flows):
@@ -101,6 +107,13 @@ class MonthlyResult(BaseModel):
 
         if any(trade.month != self.month for trade in self.executed_trades):
             raise ValueError("all executed trades must match the result month")
+        validate_external_trades(self.external_trade_flows)
+        if any(trade.month != self.month for trade in self.external_trade_flows):
+            raise ValueError("all external trades must match the result month")
+        if self.external_trade_flows and self.executed_trades:
+            raise ValueError(
+                "boundary schedules and agent trade executions are exclusive"
+            )
 
         return self
 

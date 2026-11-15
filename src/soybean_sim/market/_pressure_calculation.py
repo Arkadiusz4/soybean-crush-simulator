@@ -10,6 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 from soybean_sim.models import Commodity, NonNegativeTonnes, Region
 
 from ._contracts import MarketFlow, MarketFlowType, MarketPressure, TradeExecution
+from ._external_trade import ExternalTradeFlow, validate_external_trades
 
 _CRUSH_REL_TOLERANCE: Final = 1e-12
 _CRUSH_ABS_TOLERANCE_TONNES: Final = 1e-9
@@ -30,6 +31,7 @@ def calculate_market_pressures(
     trades: Iterable[TradeExecution],
     crushed_soybeans_tonnes: Mapping[Region, float],
     crushing_outputs_tonnes: Mapping[tuple[Region, Commodity], float],
+    external_trades: Iterable[ExternalTradeFlow] = (),
 ) -> tuple[MarketPressure, ...]:
     """Calculate physical supply and demand without changing market inputs.
 
@@ -41,6 +43,7 @@ def calculate_market_pressures(
         crushed_soybeans_tonnes (Mapping[Region, float]): Executed soybean input.
         crushing_outputs_tonnes (Mapping[tuple[Region, Commodity], float]): Actual
             meal/oil outputs; no yields or missing outputs are inferred.
+        external_trades (Iterable[ExternalTradeFlow]): Settled boundary movements.
 
     Returns:
         tuple[MarketPressure, ...]: All regional commodities in sorted order,
@@ -60,6 +63,12 @@ def calculate_market_pressures(
         crushed_soybeans_tonnes, crushing_outputs_tonnes, selected, supply, demand
     )
     _add_trades(trades, month, selected, supply, demand)
+    for flow in validate_external_trades(external_trades):
+        region = _activity_region(flow.region, selected)
+        if flow.month != month:
+            raise MarketPressureError("External trade month does not match activity")
+        contributions = supply if flow.is_import else demand
+        contributions[region, flow.commodity].append(flow.quantity_tonnes)
 
     return tuple(
         MarketPressure(

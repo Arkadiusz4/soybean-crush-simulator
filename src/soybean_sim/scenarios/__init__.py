@@ -1,4 +1,4 @@
-"""Prepare drought inputs and compare controlled baseline/drought executions."""
+"""Prepare historical inputs and execute controlled baseline/drought comparisons."""
 
 from ._comparison import (
     ScenarioComparison,
@@ -6,16 +6,40 @@ from ._comparison import (
     run_argentina_drought_comparison,
 )
 from ._drought import ArgentinaDroughtConfig, ScenarioError, apply_argentina_drought
+from ._historical import (
+    HistoricalMarketError,
+    HistoricalMarketInputs,
+    HistoricalMetadata,
+    HistoricalPreflight,
+    load_historical_market,
+    prepare_historical_market,
+)
+from ._historical_capacity import calibrate_historical_crushers
+from ._historical_market import (
+    compare_historical_market,
+    preflight_historical_market,
+    run_historical_market,
+)
 from ._metrics import MetricComparison, MonthlyComparison, RegionalMarketComparison
 
 __all__ = [
     "ArgentinaDroughtConfig",
+    "HistoricalMarketError",
+    "HistoricalMarketInputs",
+    "HistoricalMetadata",
+    "HistoricalPreflight",
     "MetricComparison",
     "MonthlyComparison",
     "RegionalMarketComparison",
     "ScenarioComparison",
     "ScenarioError",
     "apply_argentina_drought",
+    "calibrate_historical_crushers",
+    "compare_historical_market",
     "compare_simulation_results",
+    "load_historical_market",
+    "preflight_historical_market",
+    "prepare_historical_market",
     "run_argentina_drought_comparison",
+    "run_historical_market",
 ]

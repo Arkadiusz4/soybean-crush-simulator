@@ -57,6 +57,8 @@ class SettlementResult(BaseModel):
         executed_tonnes (NonNegativeTonnes): Executed input quantity in tonnes.
         unfulfilled_tonnes (NonNegativeTonnes): Unfulfilled remainder in tonnes.
         outcome (SettlementOutcome): Settlement classification for the decision.
+        residual_output_tonnes (NonNegativeTonnes): Executed crushing output outside
+            meal/oil inventories; zero for trade intentions.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -66,6 +68,7 @@ class SettlementResult(BaseModel):
     executed_tonnes: NonNegativeTonnes
     unfulfilled_tonnes: NonNegativeTonnes
     outcome: SettlementOutcome
+    residual_output_tonnes: NonNegativeTonnes = 0.0
 
     @model_validator(mode="after")
     def quantities_account_for_request(self) -> Self:
@@ -81,6 +84,10 @@ class SettlementResult(BaseModel):
 
         if self.executed_tonnes > self.requested_tonnes:
             raise ValueError("executed_tonnes cannot exceed requested_tonnes")
+        if self.residual_output_tonnes > self.executed_tonnes:
+            raise ValueError("residual output cannot exceed executed input")
+        if self.decision.action != DecisionAction.CRUSH and self.residual_output_tonnes:
+            raise ValueError("only crushing can produce residual output")
 
         if not math.isclose(
             self.requested_tonnes,
