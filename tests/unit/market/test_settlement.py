@@ -3,6 +3,7 @@ from datetime import date
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from soybean_sim.agents import (
     AgentDecision,
@@ -51,6 +52,46 @@ def _with_stocks(
             ),
         )
     )
+
+
+def test_explicit_processing_residual_conserves_input(
+    state: MarketState,
+    decision: AgentDecision,
+) -> None:
+    """Journal unmodeled output separately from traded product inventories.
+
+    Args:
+        state (MarketState): Synthetic stocks with 10,000 Brazilian soybean tonnes.
+        decision (AgentDecision): Request for 6,000 input tonnes.
+
+    Returns:
+        None: Confirms product stocks plus residual account for every input tonne.
+    """
+    config = CrusherConfig(
+        monthly_capacity_tonnes=6000,
+        processing_cost_usd_per_tonne=0,
+        meal_yield_fraction=0.76,
+        oil_yield_fraction=0.20,
+        residual_yield_fraction=0.04,
+    )
+    updated, (settled,) = settle_decisions(
+        state, (decision,), crusher_configs={"crusher-b": config}
+    )
+    stocks = {
+        item.commodity: item.quantity_tonnes
+        for item in updated.snapshot.inventories
+        if item.region == Region.BRAZIL
+    }
+    assert settled.executed_tonnes == 6000
+    assert settled.residual_output_tonnes == 240
+    assert stocks[Commodity.SOYBEAN_MEAL] == 4560
+    assert stocks[Commodity.SOYBEAN_OIL] == 1200
+    assert sum(stocks.values()) + settled.residual_output_tonnes == 10000
+    for invalid in (-1, float("nan"), float("inf"), 6001):
+        with pytest.raises(ValidationError):
+            SettlementResult.model_validate(
+                {**settled.model_dump(), "residual_output_tonnes": invalid}
+            )
 
 
 def test_public_exports() -> None:

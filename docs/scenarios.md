@@ -4,6 +4,9 @@
 `SimulationConfig.scenario_name` remains a label; there is no scenario registry or
 YAML dispatcher.
 
+For local USDA/World Bank preparation, physical feasibility diagnostics, and
+historical paired runs, see [historical market integration](historical-market.md).
+
 ## Argentina drought
 
 ```python

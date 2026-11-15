@@ -16,6 +16,7 @@ builds the package. The `soybean-sim` entry point invokes the Typer application.
 | `market/` | Immutable market state, physical crushing settlement, and deferred trade results |
 | `simulation/` | Deterministic monthly orchestration, calendar advancement, and frozen histories |
 | `data/` inside the package | Local historical loaders, record selection, inventory initialization, and input assembly |
+| `scenarios/` | Drought comparisons and historical preparation, feasibility screening, and execution |
 
 Root `configs/` contains a baseline YAML example. Root `data/` is for local datasets
 and derived files, ignored by Git except for its README. Unit tests cover enums,
@@ -271,8 +272,11 @@ net_crush_margin = gross_crush_spread - processing_cost
 `monthly_capacity_tonnes` is a required positive finite input capacity;
 `processing_cost_usd_per_tonne` is required, finite, and nonnegative. The default
 `meal_yield_fraction=0.80` and `oil_yield_fraction=0.20` are a simplified modeling
-assumption with no losses or by-products. Yields must be finite, nonnegative,
-and sum to one within an absolute tolerance of `1e-9`.
+assumption with zero residual output. An explicit `residual_yield_fraction` can
+account for output outside tracked meal/oil inventories. All three finite,
+nonnegative fractions must sum to one within an absolute tolerance of `1e-9`.
+Settlement journals this outlet as `residual_output_tonnes`; it has no revenue.
+Historical calibration can derive these ratios without changing synthetic defaults.
 
 | Default net margin (USD/input tonne) | Capacity utilization |
 | --- | --- |
@@ -435,6 +439,12 @@ separate from engine execution. The CLI is unchanged.
 `soybean_sim.scenarios` prepares drought inputs and composes the existing engine
 into [controlled baseline/drought comparisons](scenarios.md). It adds no market
 algorithms or engine behavior.
+Its historical integration composes existing loaders and allocation with a
+separate physical feasibility screen. See [historical market integration](historical-market.md)
+for explicit reporting periods, stock assumptions, and blocking diagnostics.
+Historical trade mode uses separate `ExternalTradeFlow` boundary records: imports
+arrive before decisions and exports leave after consumption. This mode replaces
+agent trade matching; ordinary simulation runs retain their existing behavior.
 See the [monthly engine documentation](simulation.md) for initialization from
 `SimulationInput`, result fields, assumptions, and a runnable example.
 

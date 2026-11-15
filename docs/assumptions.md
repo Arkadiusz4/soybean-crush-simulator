@@ -27,7 +27,9 @@ production, or stock deduction occurs. See the
 
 One aggregate Crusher per region currently requests processing from net margin,
 configured monthly input capacity, and regional soybean stocks. The default
-80% meal / 20% oil yields are simplified assumptions with no losses or by-products.
+80% meal / 20% oil yields are synthetic defaults with zero residual output.
+Historical calibration can retain raw production/crush ratios and journal the
+remaining input as unmodeled residual output. See [historical yields](historical-market.md#historical-conversion-yields-and-the-brazil-discrepancy).
 Regional stocks are a request ceiling, not owned or reserved crusher inventory;
 Producer offers and Crusher requests may refer to the same stock. Settlement
 allocates CRUSH requests by agent ID against remaining regional stocks and applies

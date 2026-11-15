@@ -20,6 +20,7 @@ from soybean_sim.agents import (
     Trader,
 )
 from soybean_sim.market import (
+    ExternalTradeFlow,
     MarketFlow,
     MarketState,
     PriceDynamicsConfig,
@@ -109,6 +110,12 @@ class ScenarioComparison(BaseModel):
                 "drought history flows do not match the configured "
                 "Argentina supply reduction"
             )
+        if tuple(
+            month.external_trade_flows for month in self.baseline.monthly_results
+        ) != (
+            tuple(month.external_trade_flows for month in self.drought.monthly_results)
+        ):
+            raise ValueError("baseline and drought external trade schedules must match")
         return self
 
     def monthly_metrics(self) -> tuple[_metrics.MonthlyComparison, ...]:
@@ -167,6 +174,8 @@ def run_argentina_drought_comparison(
     crusher_configs: Mapping[str, CrusherConfig],
     price_dynamics_config: PriceDynamicsConfig,
     regional_prices: Iterable[RegionalPrice] | None = None,
+    external_trade_flows: Iterable[ExternalTradeFlow] | None = None,
+    demand_aware_consumption: bool = False,
 ) -> ScenarioComparison:
     """Run baseline and drought with common inputs and independently created agents.
 
@@ -184,6 +193,9 @@ def run_argentina_drought_comparison(
         price_dynamics_config (PriceDynamicsConfig): Required dynamic price settings.
         regional_prices (Iterable[RegionalPrice] | None): Common regional baselines,
             or None to initialize all inventory regions from global references.
+        external_trade_flows (Iterable[ExternalTradeFlow] | None): Common boundary
+            transfers, unchanged by drought and replacing endogenous trade matching.
+        demand_aware_consumption (bool): Apply the same demand settlement to both runs.
 
     Returns:
         ScenarioComparison: Validated histories with only drought supply inputs changed.
@@ -191,6 +203,7 @@ def run_argentina_drought_comparison(
     try:
         flows = tuple(baseline_flows)
         prices = None if regional_prices is None else tuple(regional_prices)
+        external = None if external_trade_flows is None else tuple(external_trade_flows)
     except TypeError as exc:
         raise ScenarioError(
             "scenario flows and regional prices must be iterable"
@@ -210,6 +223,8 @@ def run_argentina_drought_comparison(
         monthly_flows=flows,
         regional_prices=prices,
         price_dynamics_config=price_dynamics_config,
+        external_trade_flows=external,
+        demand_aware_consumption=demand_aware_consumption,
     )
     drought = run_simulation(
         initial_state,
@@ -219,6 +234,8 @@ def run_argentina_drought_comparison(
         monthly_flows=adjusted,
         regional_prices=prices,
         price_dynamics_config=price_dynamics_config,
+        external_trade_flows=external,
+        demand_aware_consumption=demand_aware_consumption,
     )
     return compare_simulation_results(baseline, drought, drought_config=drought_config)
 
