@@ -432,8 +432,9 @@ flowchart LR
 The engine composes existing agent and settlement APIs without changing their
 rules. Historical loading, annual flow allocation, and scenario effects remain
 separate from engine execution. The CLI is unchanged.
-`soybean_sim.scenarios` provides pure input transformations, beginning with
-[Argentina drought preparation](scenarios.md); it does not execute scenarios.
+`soybean_sim.scenarios` prepares drought inputs and composes the existing engine
+into [controlled baseline/drought comparisons](scenarios.md). It adds no market
+algorithms or engine behavior.
 See the [monthly engine documentation](simulation.md) for initialization from
 `SimulationInput`, result fields, assumptions, and a runnable example.
 

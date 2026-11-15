@@ -20,7 +20,7 @@ _FlowKey = tuple[date, Region, Commodity, MarketFlowType]
 
 
 class ScenarioError(ValueError):
-    """Invalid scenario configuration or market flow input."""
+    """Invalid scenario inputs or incompatible comparison records."""
 
 
 class ArgentinaDroughtConfig(BaseModel):
