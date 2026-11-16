@@ -3,11 +3,15 @@
 import math
 from collections.abc import Sequence
 
-import market_smoke_report
 from rich import box
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
+
+if __package__:
+    from . import market_smoke_report
+else:
+    import market_smoke_report
 
 from soybean_sim.market import MarketFlowType
 from soybean_sim.models import Commodity, Region

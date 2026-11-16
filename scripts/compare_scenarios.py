@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Final
 
-import scenario_comparison_report as report
 from pydantic import ValidationError
 from rich.console import Console
-from smoke_test_market import check_accounting
+
+if __package__:
+    from . import scenario_comparison_report as report
+    from .smoke_test_market import check_accounting
+else:
+    import scenario_comparison_report as report
+    from smoke_test_market import check_accounting
 
 from soybean_sim import market
 from soybean_sim.agents import (
