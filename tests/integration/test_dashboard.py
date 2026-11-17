@@ -57,8 +57,12 @@ def test_load_and_navigation_reuse_one_result(monkeypatch: pytest.MonkeyPatch) -
     app = AppTest.from_file(_APP).run()
     assert not app.exception
     load.assert_not_called()
+    assert app.sidebar.radio[0].value == "Overview"
+    assert any("No results loaded" in item.value for item in app.sidebar.caption)
+    assert any("not forecasts" in item.value for item in app.sidebar.caption)
     app.button[0].click().run(timeout=30)
     assert not app.exception
+    assert any("demo results loaded" in item.value for item in app.sidebar.caption)
     assert any("baseline loaded" in item.value for item in app.success)
     app.radio[0].set_value("Market Analytics").run()
     assert any("baseline loaded" in item.value for item in app.success)
