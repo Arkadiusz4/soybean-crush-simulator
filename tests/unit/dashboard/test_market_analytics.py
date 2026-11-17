@@ -1,0 +1,210 @@
+from datetime import date
+from inspect import signature
+from pathlib import Path
+from unittest.mock import MagicMock, Mock
+
+import pytest
+from streamlit.testing.v1 import AppTest
+
+from dashboard import data
+from dashboard.components import market_analytics as analytics
+from soybean_sim.models import Commodity, Region
+from soybean_sim.simulation import SimulationResult
+
+
+@pytest.fixture(scope="module")
+def demo() -> SimulationResult:
+    """Provide the existing deterministic in-memory demonstration."""
+    return data.load_demo_baseline()
+
+
+def test_contract_and_empty_state() -> None:
+    """Keep the shared render signature and avoid charts before loading."""
+    assert tuple(signature(analytics.render).parameters) == ("result",)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.radio[0].set_value("Market Analytics").run()
+    assert not app.exception
+    assert any("sidebar" in item.value for item in app.info)
+    assert not app.selectbox
+
+
+def test_prices_and_inventory_use_monthly_observations(demo: SimulationResult) -> None:
+    """Keep prices and ending stocks in order without adding a future month."""
+    region, commodity = Region.ARGENTINA, Commodity.SOYBEANS
+    prices = analytics._price_series(demo, region, commodity)
+    stocks = analytics._inventory_series(demo, region, commodity)
+    assert [month for month, _ in prices] == [m.month for m in demo.monthly_results]
+    assert [month for month, _ in stocks] == [m.month for m in demo.monthly_results]
+    for monthly, (_, price), (_, stock) in zip(
+        demo.monthly_results, prices, stocks, strict=True
+    ):
+        assert price == next(
+            p.price_usd_per_tonne
+            for p in monthly.regional_prices
+            if p.region == region and p.commodity == commodity
+        )
+        assert stock == next(
+            i.quantity_tonnes
+            for i in monthly.ending_state.snapshot.inventories
+            if i.region == region and i.commodity == commodity
+        )
+    assert prices[-1][0] == demo.monthly_results[-1].month
+    assert analytics._price_series(demo, region, Commodity.SOYBEAN_MEAL) != prices
+
+
+def test_executed_crushing_and_zero_months(demo: SimulationResult) -> None:
+    """Use settled quantities rather than requests, and retain inactive months."""
+    month = demo.monthly_results[0]
+    settlement = month.settlement_results[0].model_copy(update={"executed_tonnes": 5.0})
+    changed_month = month.model_copy(update={"settlement_results": (settlement,)})
+    changed = demo.model_copy(update={"monthly_results": (changed_month,)})
+    assert analytics._crushing_series(changed, Region.ARGENTINA) == [(month.month, 5.0)]
+    assert analytics._crushing_series(changed, Region.BRAZIL) == [(month.month, 0.0)]
+
+
+def test_trade_directions_and_zeroes(demo: SimulationResult) -> None:
+    """Count the same physical trade once as each region's import or export."""
+    month = demo.monthly_results[0]
+    first = demo.model_copy(update={"monthly_results": (month,)})
+    argentina = analytics._trade_series(first, Region.ARGENTINA, Commodity.SOYBEANS)
+    europe = analytics._trade_series(first, Region.EUROPEAN_UNION, Commodity.SOYBEANS)
+    assert argentina == [(month.month, 0.0, 25.0)]
+    assert europe == [(month.month, 25.0, 0.0)]
+    assert analytics._trade_series(first, Region.ARGENTINA, Commodity.SOYBEAN_MEAL) == [
+        (month.month, 0.0, 0.0)
+    ]
+
+
+def test_missing_observations_are_not_zero(demo: SimulationResult) -> None:
+    """Leave absent regional prices and inventories as missing observations."""
+    month = demo.monthly_results[0]
+    ending = month.ending_state.model_copy(
+        update={
+            "snapshot": month.ending_state.snapshot.model_copy(
+                update={"inventories": ()}
+            )
+        }
+    )
+    changed = month.model_copy(update={"regional_prices": (), "ending_state": ending})
+    result = demo.model_copy(update={"monthly_results": (changed,)})
+    assert analytics._price_series(result, Region.ARGENTINA, Commodity.SOYBEANS) == [
+        (month.month, None)
+    ]
+    assert analytics._inventory_series(
+        result, Region.ARGENTINA, Commodity.SOYBEANS
+    ) == [(month.month, None)]
+
+
+def test_crushing_empty_and_positive_months(
+    monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
+) -> None:
+    """Hide all-zero activity while retaining zero months beside actual crushing."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    months = [date(2025, 1, 1), date(2025, 2, 1)]
+    series = Mock(return_value=[(months[0], 0.0), (months[1], 0.0)])
+    monkeypatch.setattr(analytics, "_crushing_series", series)
+    analytics._crushing(demo, Region.BRAZIL)
+    ui.bar_chart.assert_not_called()
+    assert "No soybean crushing" in ui.info.call_args.args[0]
+    series.return_value = [(months[0], 0.0), (months[1], 12.0)]
+    analytics._crushing(demo, Region.BRAZIL)
+    assert ui.bar_chart.call_args.args[0]["Soybean Crushing (t)"].tolist() == [0, 12]
+
+
+def test_trade_empty_and_positive_months(
+    monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
+) -> None:
+    """Keep zero totals visible and move active monthly details into an expander."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    months = [date(2025, 1, 1), date(2025, 2, 1)]
+    series = Mock(return_value=[(months[0], 0.0, 0.0), (months[1], 0.0, 0.0)])
+    monkeypatch.setattr(analytics, "_trade_series", series)
+    analytics._trade(demo, Region.BRAZIL, Commodity.SOYBEANS)
+    ui.bar_chart.assert_not_called()
+    ui.dataframe.assert_not_called()
+    ui.expander.assert_not_called()
+    assert "Imports: 0.00 t · Exports: 0.00 t · Net imports: 0.00 t" in str(
+        ui.caption.call_args_list
+    )
+    series.return_value = [(months[0], 0.0, 0.0), (months[1], 8.0, 3.0)]
+    analytics._trade(demo, Region.BRAZIL, Commodity.SOYBEANS)
+    frame = ui.bar_chart.call_args.args[0]
+    assert frame["Imports (t)"].tolist() == [0.0, 8.0]
+    assert frame["Exports (t)"].tolist() == [0.0, 3.0]
+    assert frame["Net imports (t)"].tolist() == [0.0, 5.0]
+    ui.expander.assert_called_once_with("Monthly trade details")
+    assert "Imports: 8.00 t · Exports: 3.00 t · Net imports: 5.00 t" in str(
+        ui.caption.call_args_list
+    )
+
+
+def test_missing_activity_is_not_treated_as_zero(
+    monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
+) -> None:
+    """Report incomplete records without claiming that activity was zero."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    month = date(2025, 1, 1)
+    monkeypatch.setattr(analytics, "_crushing_series", lambda *_: [(month, None)])
+    monkeypatch.setattr(analytics, "_trade_series", lambda *_: [(month, None, 0.0)])
+    analytics._crushing(demo, Region.BRAZIL)
+    analytics._trade(demo, Region.BRAZIL, Commodity.SOYBEANS)
+    assert ui.bar_chart.call_count == 2
+    assert not any(
+        "No soybean crushing" in str(call) for call in ui.info.call_args_list
+    )
+    assert not any(
+        "No interregional trades" in str(call) for call in ui.info.call_args_list
+    )
+    assert any("unavailable" in str(call) for call in ui.info.call_args_list)
+
+
+def test_zero_inventory_remains_a_valid_chart(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Show an observed zero stock rather than reporting a missing observation."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    analytics._line_section(
+        "Inventory Evolution", [(date(2025, 1, 1), 0.0)], "Ending inventory (t)"
+    )
+    assert ui.line_chart.call_args.args[0]["Ending inventory (t)"].tolist() == [0.0]
+    ui.info.assert_not_called()
+
+
+def test_interactive_filters_reuse_unmodified_result(
+    monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
+) -> None:
+    """Change filters and navigate without rerunning or mutating the simulation."""
+    load = Mock(wraps=data.load_demo_comparison)
+    monkeypatch.setattr(data, "load_demo_comparison", load)
+    before = demo.model_dump_json()
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.button[0].click().run(timeout=30)
+    app.sidebar.radio[0].set_value("Market Analytics").run()
+    assert not app.exception and len(app.selectbox) == 2
+    assert {item.value for item in app.subheader} >= {
+        "Regional Price Trends",
+        "Monthly Crushing",
+        "Inventory Evolution",
+        "Interregional Trade",
+    }
+    app.selectbox[1].select(Commodity.SOYBEANS).run()
+    assert app.expander[0].label == "Monthly trade details"
+    assert len(app.dataframe[0].value) == 12
+    app.selectbox[0].select(Region.BRAZIL).run()
+    app.selectbox[1].select(Commodity.SOYBEAN_OIL).run()
+    assert not app.exception
+    assert app.selectbox[0].value == Region.BRAZIL
+    assert app.selectbox[1].value == Commodity.SOYBEAN_OIL
+    assert any("No soybean crushing" in item.value for item in app.info)
+    assert any("No interregional trades" in item.value for item in app.info)
+    assert not app.expander
+    app.sidebar.radio[0].set_value("Overview").run()
+    assert app.metric[0].value == "960.00"
+    load.assert_called_once_with()
+    assert demo.model_dump_json() == before
