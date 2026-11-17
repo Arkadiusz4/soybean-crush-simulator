@@ -1,25 +1,24 @@
 # Soybean Crush Market Simulator
 
-A Python project for the Advanced Python Programming course. The planned
-agent-based simulation will explore how disruptions affect soybean markets using
-monthly time steps. It is a simplified scenario model, not a price forecasting
-system.
+A Python project for the Advanced Python Programming course. Its agent-based
+simulation explores how disruptions affect soybean markets using monthly time
+steps. It is a simplified scenario model, not a price forecasting system.
 
 ## Goals and scope
 
-The model will cover four regions: **United States, Brazil, Argentina, and European
+The model covers four regions: **United States, Brazil, Argentina, and European
 Union**, and three commodities: **soybeans, soybean meal, and soybean oil**.
 
-Three agent types are planned:
+Three agent types are implemented:
 
-- **Producer** produces soybeans and supplies them to the market.
-- **Crusher** buys soybeans and processes them into soybean meal and soybean oil.
-- **Trader** moves commodities between regions based on prices, availability,
-  and transportation costs.
+- **Producer** offers available soybeans for sale.
+- **Crusher** requests processing of soybeans into soybean meal and soybean oil.
+- **Trader** requests soybean purchases and offers soybean products for sale;
+  the market matches eligible interregional intentions.
 
-Planned features include monthly production, processing, inventory, price, and
-trade updates; drought, demand, and transportation cost scenarios; historical
-initialization from USDA PSD and World Bank data; and an optional Streamlit dashboard.
+The engine supports monthly physical flows, pricing, trade, and a drought scenario.
+Demand and transportation cost scenarios, dashboard analytics, and richer controls
+remain planned.
 
 ## Current status
 
@@ -32,16 +31,17 @@ an agent interface, a price-responsive Producer and Trader, a margin-based Crush
 immutable market state, physical crushing settlement, a deterministic monthly
 engine with frozen reference prices, tests, and CI.
 
-Trade matching and execution, dynamic pricing, new production, scenario effects,
-and dashboard functionality are **not implemented**. The engine is a Python API;
-the configuration CLI does not start simulation runs.
+The engine also supports physical trade, dynamic regional prices, and controlled
+baseline/drought comparisons. The Streamlit dashboard currently contains only
+navigation and placeholders backed by a synthetic demonstration. The CLI does
+not start simulation runs.
 
 ## Technology stack
 
 Python 3.12+, uv, and Hatchling provide dependency management and packaging.
-Pydantic and PyYAML handle configuration; Typer provides the CLI and openpyxl reads
-local Excel price data. Development uses
-Ruff, Pyright, pytest, pytest-cov, and GitHub Actions. Streamlit is an optional dependency.
+Pydantic and PyYAML handle configuration; Typer provides the CLI, openpyxl reads
+local Excel price data, and Rich supports the existing demonstration reports. Development uses
+Ruff, Pyright, pytest, pytest-cov, and GitHub Actions. Streamlit provides the dashboard.
 
 ## Installation
 
@@ -65,13 +65,33 @@ and installs the package in editable mode, including development dependencies by
 default. `.python-version` selects Python 3.12; the package requires Python 3.12+.
 
 Use `uv sync --locked --no-dev` for an environment without development tools.
-To install optional dashboard dependencies:
+Streamlit is included in the base dependencies. The existing `dashboard` extra
+remains available for compatibility.
+
+## Dashboard foundation
+
+After `uv sync --locked`, launch the app from the repository root:
 
 ```bash
-uv sync --locked --extra dashboard
+uv run streamlit run dashboard/app.py
+# or: just dashboard
 ```
 
-This extra does not provide a dashboard application yet.
+Select **Load demo results** to run the existing deterministic synthetic baseline
+and Argentina drought demonstration. The three sections currently show
+placeholders and result availability; charts and controls are planned. Results
+are retained per session when navigating. No historical files are required.
+
+The app supplies shared results to independent component modules:
+
+- Developer 1: `dashboard/components/overview.py`, with `render(result: SimulationResult | None)`.
+- Developer 2: `dashboard/components/market_analytics.py`, with the same result signature.
+- Developer 3: `dashboard/components/scenario_comparison.py`, with `render(comparison: ScenarioComparison | None)`.
+
+Components receive results from the app and should not load data or run the
+simulation themselves. `dashboard/data.py` temporarily reuses the repository's
+synthetic comparison script. This requires the repository checkout and the
+editable installation created by `uv sync`; it is not part of the package API.
 
 ## Usage
 
@@ -116,6 +136,7 @@ just test           # Run pytest with the configured coverage settings
 just coverage       # Run pytest with explicit coverage options, matching CI
 just check          # Run lint, format-check, typecheck, and coverage
 just cli            # Display CLI help
+just dashboard      # Launch the Streamlit dashboard
 just clean          # Remove caches and test reports; preserve .venv and datasets
 ```
 
@@ -133,7 +154,7 @@ Tests include branch coverage reporting with a 90% minimum. CI runs the same
 checks as `just check` in independent `lint`, `typecheck`, and `tests` jobs on Python 3.12,
 triggered by PRs targeting `main`, pushes to `main`, or manual execution.
 
-Pyright checks `src/` in standard mode, targeting Python 3.12. Its development
+Pyright checks `src/` and `dashboard/` in standard mode, targeting Python 3.12. Its development
 dependency includes a Node runtime, so no separate Node installation is needed.
 
 For less frequent packaging and dependency tasks, use `uv build` to build the

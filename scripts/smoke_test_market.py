@@ -9,9 +9,13 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Final
 
-import market_smoke_report as report
 from pydantic import ValidationError
 from rich.console import Console
+
+if __package__:
+    from . import market_smoke_report as report
+else:
+    import market_smoke_report as report
 
 from soybean_sim.agents import (
     Agent,

@@ -37,6 +37,10 @@ check: lint format-check typecheck coverage
 cli:
     uv run --locked soybean-sim --help
 
+# Launch the synthetic-data dashboard from the repository root.
+dashboard:
+    uv run --locked streamlit run dashboard/app.py
+
 # Remove project caches and test reports; preserve .venv, datasets, and Git files.
 clean:
     find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
