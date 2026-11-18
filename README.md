@@ -32,9 +32,8 @@ immutable market state, physical crushing settlement, a deterministic monthly
 engine with frozen reference prices, tests, and CI.
 
 The engine also supports physical trade, dynamic regional prices, and controlled
-baseline/drought comparisons. The Streamlit dashboard currently contains only
-navigation and placeholders backed by a synthetic demonstration. The CLI does
-not start simulation runs.
+baseline/drought comparisons. The dashboard displays simulation results; the CLI
+does not start simulation runs.
 
 ## Technology stack
 
@@ -77,10 +76,19 @@ uv run streamlit run dashboard/app.py
 # or: just dashboard
 ```
 
-Select **Load demo results** to run the existing deterministic synthetic baseline
-and Argentina drought demonstration. The three sections currently show
-placeholders and result availability; charts and controls are planned. Results
-are retained per session when navigating. No historical files are required.
+Choose synthetic or historical data, then select a baseline or Argentina drought
+scenario. Drought can run alone or be compared with a baseline, with a 0–100%
+reduction. Press
+**Run Simulation** to execute; changes to controls do not run automatically, and
+the last successful result remains available while navigating.
+
+Historical mode requires `data/raw/psd_oilseeds.csv` and
+`data/raw/CMO-Historical-Data-Monthly.xlsx`. The dashboard checks available
+calendar years for complete local inputs and valid crusher calibration. Calendar
+year N uses USDA marketing year N−1 and January N reference prices. Marketing-year
+opening stocks are not reconstructed January inventories. Consumption may be unmet
+and simulated regional prices may diverge from reference prices.
+Results are scenarios, not forecasts or historical reconstructions.
 
 The app supplies shared results to independent component modules:
 
