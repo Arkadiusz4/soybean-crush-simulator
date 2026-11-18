@@ -17,8 +17,7 @@ Three agent types are implemented:
   the market matches eligible interregional intentions.
 
 The engine supports monthly physical flows, pricing, trade, and a drought scenario.
-Demand and transportation cost scenarios, dashboard analytics, and richer controls
-remain planned.
+Transportation cost scenarios remain planned.
 
 ## Current status
 
@@ -67,57 +66,51 @@ Use `uv sync --locked --no-dev` for an environment without development tools.
 Streamlit is included in the base dependencies. The existing `dashboard` extra
 remains available for compatibility.
 
-## Dashboard foundation
+## Dashboard
 
-After `uv sync --locked`, launch the app from the repository root:
+Launch from the repository checkout after `uv sync --locked`:
 
 ```bash
 uv run streamlit run dashboard/app.py
 # or: just dashboard
 ```
 
-Choose synthetic or historical data, then select a baseline or regional soybean
-production shock or a soybean meal/oil consumption shock. Changes range from
-−100% to +1000%. Any supported region and change can also be compared with a baseline. Press
-**Run Simulation** to execute; changes to controls do not run automatically, and
-the last successful result remains available while navigating.
+Choose synthetic data (fixed 2025) or historical USDA/World Bank inputs. Historical
+years are offered only after checking local input coverage and Crusher calibration;
+calendar year N uses marketing year N−1 and January N reference prices. Required
+files are `data/raw/psd_oilseeds.csv` and
+`data/raw/CMO-Historical-Data-Monthly.xlsx`; the app never downloads or substitutes data.
 
-The standard production slider covers −100% to +100% in 5% steps. Larger
-increases are available separately under stress testing. For paired runs,
-Overview and Market Analytics show the baseline; Scenario Comparison shows both.
+Market scenarios include Baseline, regional soybean Production Shock, meal/oil
+Consumption Shock, and regional Crusher Configuration. Choose Single Simulation or
+Compare with Baseline. Advanced Settings controls price sensitivity and the monthly
+price-change cap, plus inclusive months for flow shocks. Crusher experiments change
+capacity and processing cost, with baseline and modified settings previewed before
+execution. The synthetic demo has only an Argentina Crusher; historical mode has
+one per region. Capacity must stay positive, while processing cost can reach zero.
 
-Historical mode requires `data/raw/psd_oilseeds.csv` and
-`data/raw/CMO-Historical-Data-Monthly.xlsx`. The dashboard checks available
-calendar years for complete local inputs and valid crusher calibration. Calendar
-year N uses USDA marketing year N−1 and January N reference prices. Marketing-year
-opening stocks are not reconstructed January inventories. Consumption may be unmet
-and simulated regional prices may diverge from reference prices.
-Results are scenarios, not forecasts or historical reconstructions.
+Only **Run Simulation** executes the model. Controls and chart filters do not rerun
+it. Results remain session-local until a new run succeeds; failures retain the last
+successful run. The sidebar identifies the completed configuration and pending
+changes. Single runs are displayed in Overview and Market Analytics; for paired
+runs those views display the baseline, and Scenario Comparison displays both.
 
-Consumption shocks change requested consumption, not guaranteed fulfillment.
-Historical runs report unmet demand; runs without demand-aware accounting do not
-record fulfilled or unmet totals. A missing input flow remains missing.
+Overview shows executed activity and final stocks, with exact values behind compact
+KPI tooltips. Analytics supports multiple regions and commodities and a visual-only
+price index. Missing observations are gaps; zero stocks are valid observations.
+All reported prices are observed during a simulated month, not after its settlement.
 
-Crusher Configuration changes one region's capacity and processing cost relative
-to its baseline. Capacity must stay positive, so the regular capacity control
-starts at −95%; cost may fall to zero. The synthetic demo has only an Argentina
-Crusher. Historical runs expose all four calibrated regional Crushers.
-The preview shows configuration, not executed throughput. Capacity increases may
-have no effect when soybeans or profitability limit processing, and cost changes
-may stay within the same utilization band. Historical capacities are derived from
-USDA annual crush rather than measured plant capacity. Product and residual yields
-stay unchanged; additional output does not guarantee fulfillment of demand.
+Historical opening stocks are marketing-year references, not reconstructed January
+inventories. Annual USDA flows are allocated into modeled months; regional prices
+are simulated rather than historical replay. Consumption shocks change requested
+demand, which may remain unmet. Capacity is a throughput limit, not guaranteed
+production, and cost changes may stay within the same utilization band. Trader
+behavior does not reconstruct global trade. Valid physical accounting alone is not
+economic calibration, and results are not forecasts.
 
-The app supplies shared results to independent component modules:
-
-- Developer 1: `dashboard/components/overview.py`, with `render(result: SimulationResult | None)`.
-- Developer 2: `dashboard/components/market_analytics.py`, with the same result signature.
-- Developer 3: `dashboard/components/scenario_comparison.py`, with `render(comparison: ScenarioComparison | None)`.
-
-Components receive results from the app and should not load data or run the
-simulation themselves. `dashboard/data.py` temporarily reuses the repository's
-synthetic comparison script. This requires the repository checkout and the
-editable installation created by `uv sync`; it is not part of the package API.
+The dashboard requires the repository checkout and editable installation because
+its adapter reuses the synthetic demo setup. Rendering components consume completed
+results and never execute simulations or load datasets.
 
 ## Usage
 
