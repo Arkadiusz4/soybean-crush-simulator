@@ -7,7 +7,7 @@ import streamlit as st
 
 from dashboard import data
 from dashboard.components import market_analytics, overview, scenario_comparison
-from soybean_sim.models import Region
+from soybean_sim.models import Commodity, Region
 
 
 def main() -> None:
@@ -61,16 +61,27 @@ def main() -> None:
         else:
             year = 2025
             st.caption("Synthetic simulation period: 2025.")
-        scenario = st.selectbox("Market Scenario", ("Baseline", "Production Shock"))
+        scenario = st.selectbox(
+            "Market Scenario", ("Baseline", "Production Shock", "Consumption Shock")
+        )
         shock_region = Region.ARGENTINA
+        shock_commodity = Commodity.SOYBEAN_MEAL
         change = -30
-        if scenario == "Production Shock":
+        if scenario != "Baseline":
             shock_region = st.selectbox(
-                "Production region",
+                "Consumption region"
+                if scenario == "Consumption Shock"
+                else "Production region",
                 list(Region),
                 index=list(Region).index(Region.ARGENTINA),
                 format_func=lambda region: region.value.replace("_", " ").title(),
             )
+            if scenario == "Consumption Shock":
+                shock_commodity = st.selectbox(
+                    "Consumption commodity",
+                    (Commodity.SOYBEAN_MEAL, Commodity.SOYBEAN_OIL),
+                    format_func=lambda item: item.value.replace("_", " ").title(),
+                )
             previous_change = (
                 current.config.shock_percent
                 if current is not None and current.config.shock_percent is not None
@@ -87,7 +98,7 @@ def main() -> None:
             )
             if stress:
                 change = st.number_input(
-                    "Stress-test production change (%)",
+                    f"Stress-test {scenario.split()[0].lower()} change (%)",
                     min_value=-100.0,
                     max_value=1000.0,
                     value=st.session_state.get(
@@ -101,7 +112,9 @@ def main() -> None:
                 st.session_state.shock_stress_saved = change
             else:
                 change = st.slider(
-                    "Soybean production change (%)",
+                    "Consumption change (%)"
+                    if scenario == "Consumption Shock"
+                    else "Soybean production change (%)",
                     -100,
                     100,
                     st.session_state.get("shock_standard_saved", -30),
@@ -117,7 +130,7 @@ def main() -> None:
         output = st.selectbox(
             "Output",
             ("Single Simulation", "Compare with Baseline")
-            if scenario == "Production Shock"
+            if scenario != "Baseline"
             else ("Single Simulation",),
         )
         mode = (
@@ -125,7 +138,7 @@ def main() -> None:
             if scenario == "Baseline"
             else "Baseline vs Drought"
             if output == "Compare with Baseline"
-            else "Production Shock"
+            else scenario
         )
         reduction = -change if change <= 0 else 0
         defaults = data.PriceDynamicsConfig()
@@ -148,7 +161,7 @@ def main() -> None:
                 help="Limits the size of each monthly price update.",
             )
             start = end = None
-            if scenario == "Production Shock" and year is not None:
+            if scenario != "Baseline" and year is not None:
                 months = [date(year, month, 1) for month in range(1, 13)]
                 start = st.selectbox(
                     "Shock start month",
@@ -174,7 +187,9 @@ def main() -> None:
             end,
             year or 2025,
             shock_region,
-            float(change) if scenario == "Production Shock" else None,
+            float(change) if scenario != "Baseline" else None,
+            scenario if scenario != "Baseline" else "Production Shock",
+            shock_commodity,
         )
         if st.button("Run Simulation", type="primary", disabled=year is None):
             try:
@@ -192,7 +207,7 @@ def main() -> None:
             description = (
                 f"{config.source} · {config.scenario} · {config.output} · {config.year}"
             )
-            if config.scenario == "Production Shock":
+            if config.scenario != "Baseline":
                 change_value = (
                     config.shock_percent
                     if config.shock_percent is not None
@@ -200,12 +215,16 @@ def main() -> None:
                 )
                 region_label = config.shock_region.value.replace("_", " ").title()
                 description += f" · {region_label} · {change_value:+g}%"
+                if config.scenario == "Consumption Shock":
+                    description += (
+                        f" · {config.shock_commodity.value.replace('_', ' ').title()}"
+                    )
             st.caption(f"Last completed run: {description}")
             st.caption(
                 f"Price sensitivity: {config.price_sensitivity:g} · "
                 f"Monthly cap: {config.maximum_monthly_change:.1%}"
             )
-            if config.scenario == "Production Shock":
+            if config.scenario != "Baseline":
                 st.caption(
                     f"Shock period: {config.drought_start:%Y-%m} to "
                     f"{config.drought_end:%Y-%m} (inclusive)"

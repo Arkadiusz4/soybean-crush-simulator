@@ -366,3 +366,39 @@ def test_historical_brazil_shock_records_real_flows(
                 if eligible
                 else original.quantity_tonnes
             )
+
+
+def test_historical_consumption_shock_records_unmet_demand(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType
+) -> None:
+    """Keep shocked requested demand and record the physically unmet portion."""
+    from soybean_sim.scenarios import ConsumptionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ConsumptionShockConfig(
+            region=Region.EUROPEAN_UNION,
+            commodity=Commodity.SOYBEAN_MEAL,
+            percentage_change=1000,
+        ),
+    )
+    records = [
+        item
+        for month in comparison.drought.monthly_results
+        for item in (month.consumption_results or ())
+        if item.region == Region.EUROPEAN_UNION
+        and item.commodity == Commodity.SOYBEAN_MEAL
+    ]
+    assert len(records) == 12
+    assert any(item.unmet_tonnes > 0 for item in records)
+    assert all(
+        item.requested_tonnes
+        == pytest.approx(item.fulfilled_tonnes + item.unmet_tonnes)
+        for item in records
+    )
+    assert comparison.monthly_metrics()[0].markets

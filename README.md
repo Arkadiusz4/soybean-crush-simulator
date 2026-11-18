@@ -77,8 +77,8 @@ uv run streamlit run dashboard/app.py
 ```
 
 Choose synthetic or historical data, then select a baseline or regional soybean
-production shock. Changes range from −100% to +1000%. Any supported region and
-change can also be compared with a baseline. Press
+production shock or a soybean meal/oil consumption shock. Changes range from
+−100% to +1000%. Any supported region and change can also be compared with a baseline. Press
 **Run Simulation** to execute; changes to controls do not run automatically, and
 the last successful result remains available while navigating.
 
@@ -93,6 +93,10 @@ year N uses USDA marketing year N−1 and January N reference prices. Marketing-
 opening stocks are not reconstructed January inventories. Consumption may be unmet
 and simulated regional prices may diverge from reference prices.
 Results are scenarios, not forecasts or historical reconstructions.
+
+Consumption shocks change requested consumption, not guaranteed fulfillment.
+Historical runs report unmet demand; runs without demand-aware accounting do not
+record fulfilled or unmet totals. A missing input flow remains missing.
 
 The app supplies shared results to independent component modules:
 

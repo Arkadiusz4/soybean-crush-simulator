@@ -35,9 +35,11 @@ from soybean_sim.simulation import SimulationError, SimulationResult, run_simula
 from ._comparison import ScenarioComparison, run_argentina_drought_comparison
 from ._drought import (
     ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
     ProductionShockConfig,
     ScenarioError,
     apply_argentina_drought,
+    apply_consumption_shock,
     apply_production_shock,
 )
 from ._historical import (
@@ -543,9 +545,11 @@ def run_historical_market(
         return run_simulation(
             prepared.state,
             agents,
-            monthly_flows=apply_production_shock(
+            monthly_flows=apply_consumption_shock(
                 prepared.flows, config=production_shock
             )
+            if isinstance(production_shock, ConsumptionShockConfig)
+            else apply_production_shock(prepared.flows, config=production_shock)
             if production_shock is not None
             else (
                 prepared.flows
@@ -584,7 +588,9 @@ def compare_historical_market(
     crusher_configs: Mapping[Region, CrusherConfig],
     trader_configs: Mapping[Region, TraderConfig],
     price_dynamics_config: PriceDynamicsConfig,
-    drought_config: ArgentinaDroughtConfig | ProductionShockConfig,
+    drought_config: ArgentinaDroughtConfig
+    | ConsumptionShockConfig
+    | ProductionShockConfig,
 ) -> ScenarioComparison:
     """Attempt paired runs from identical historical starting conditions.
 

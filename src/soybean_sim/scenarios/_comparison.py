@@ -34,9 +34,11 @@ from soybean_sim.simulation import SimulationResult, run_simulation
 from . import _metrics
 from ._drought import (
     ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
     ProductionShockConfig,
     ScenarioError,
     apply_argentina_drought,
+    apply_consumption_shock,
     apply_production_shock,
 )
 
@@ -56,7 +58,9 @@ class ScenarioComparison(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     baseline: SimulationResult
     drought: SimulationResult
-    drought_config: ArgentinaDroughtConfig | ProductionShockConfig
+    drought_config: (
+        ArgentinaDroughtConfig | ConsumptionShockConfig | ProductionShockConfig
+    )
 
     @field_validator("baseline", "drought", mode="after")
     @classmethod
@@ -74,8 +78,9 @@ class ScenarioComparison(BaseModel):
     @field_validator("drought_config", mode="after")
     @classmethod
     def revalidate_drought_config(
-        cls, value: ArgentinaDroughtConfig | ProductionShockConfig
-    ) -> ArgentinaDroughtConfig | ProductionShockConfig:
+        cls,
+        value: ArgentinaDroughtConfig | ConsumptionShockConfig | ProductionShockConfig,
+    ) -> ArgentinaDroughtConfig | ConsumptionShockConfig | ProductionShockConfig:
         """Validate configuration copies and serialized configuration fields.
 
         Args:
@@ -100,7 +105,9 @@ class ScenarioComparison(BaseModel):
             for flow in monthly.market_flows
         )
         expected = (
-            apply_production_shock(flows, config=self.drought_config)
+            apply_consumption_shock(flows, config=self.drought_config)
+            if isinstance(self.drought_config, ConsumptionShockConfig)
+            else apply_production_shock(flows, config=self.drought_config)
             if isinstance(self.drought_config, ProductionShockConfig)
             else apply_argentina_drought(flows, config=self.drought_config)
         )
@@ -127,8 +134,18 @@ class ScenarioComparison(BaseModel):
                 and not (
                     isinstance(self.drought_config, ProductionShockConfig)
                     and left.region == self.drought_config.region
-                    and left.commodity == Commodity.SOYBEANS
-                    and left.flow_type == MarketFlowType.SUPPLY
+                    and (
+                        (
+                            isinstance(self.drought_config, ConsumptionShockConfig)
+                            and left.commodity == self.drought_config.commodity
+                            and left.flow_type == MarketFlowType.CONSUMPTION
+                        )
+                        or (
+                            not isinstance(self.drought_config, ConsumptionShockConfig)
+                            and left.commodity == Commodity.SOYBEANS
+                            and left.flow_type == MarketFlowType.SUPPLY
+                        )
+                    )
                     and (
                         self.drought_config.start_month is None
                         or left.month >= self.drought_config.start_month
@@ -188,7 +205,9 @@ def compare_simulation_results(
     baseline: SimulationResult,
     drought: SimulationResult,
     *,
-    drought_config: ArgentinaDroughtConfig | ProductionShockConfig,
+    drought_config: ArgentinaDroughtConfig
+    | ConsumptionShockConfig
+    | ProductionShockConfig,
 ) -> ScenarioComparison:
     """Validate recorded paired runs before comparing observations or executions.
 
@@ -212,7 +231,9 @@ def run_argentina_drought_comparison(
     initial_state: MarketState,
     baseline_flows: Iterable[MarketFlow],
     *,
-    drought_config: ArgentinaDroughtConfig | ProductionShockConfig,
+    drought_config: ArgentinaDroughtConfig
+    | ConsumptionShockConfig
+    | ProductionShockConfig,
     months: int,
     agent_factory: Callable[[], Iterable[Agent]],
     crusher_configs: Mapping[str, CrusherConfig],
@@ -253,7 +274,9 @@ def run_argentina_drought_comparison(
             "scenario flows and regional prices must be iterable"
         ) from exc
     adjusted = (
-        apply_production_shock(flows, config=drought_config)
+        apply_consumption_shock(flows, config=drought_config)
+        if isinstance(drought_config, ConsumptionShockConfig)
+        else apply_production_shock(flows, config=drought_config)
         if isinstance(drought_config, ProductionShockConfig)
         else apply_argentina_drought(flows, config=drought_config)
     )
@@ -292,7 +315,7 @@ def run_production_shock_comparison(
     initial_state: MarketState,
     baseline_flows: Iterable[MarketFlow],
     *,
-    shock_config: ProductionShockConfig,
+    shock_config: ProductionShockConfig | ConsumptionShockConfig,
     months: int,
     agent_factory: Callable[[], Iterable[Agent]],
     crusher_configs: Mapping[str, CrusherConfig],

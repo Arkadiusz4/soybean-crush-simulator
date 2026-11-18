@@ -8,9 +8,11 @@ from ._comparison import (
 )
 from ._drought import (
     ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
     ProductionShockConfig,
     ScenarioError,
     apply_argentina_drought,
+    apply_consumption_shock,
     apply_production_shock,
 )
 from ._historical import (
@@ -31,6 +33,7 @@ from ._metrics import MetricComparison, MonthlyComparison, RegionalMarketCompari
 
 __all__ = [
     "ArgentinaDroughtConfig",
+    "ConsumptionShockConfig",
     "HistoricalMarketError",
     "HistoricalMarketInputs",
     "HistoricalMetadata",
@@ -42,6 +45,7 @@ __all__ = [
     "ScenarioComparison",
     "ScenarioError",
     "apply_argentina_drought",
+    "apply_consumption_shock",
     "apply_production_shock",
     "calibrate_historical_crushers",
     "compare_historical_market",

@@ -474,3 +474,73 @@ def test_stress_test_selection_is_preserved(monkeypatch: pytest.MonkeyPatch) -> 
     app.checkbox[0].check().run()
     assert app.number_input[0].value == 150
     execute.assert_called_once()
+
+
+def test_consumption_comparison_uses_real_engine() -> None:
+    """Apply EU meal demand through the physical engine and dynamic pressure."""
+    from soybean_sim.models import Commodity, Region
+    from soybean_sim.scenarios import ConsumptionShockConfig
+
+    config = data.RunConfig(
+        "Synthetic",
+        "Baseline vs Drought",
+        shock_kind="Consumption Shock",
+        shock_region=Region.EUROPEAN_UNION,
+        shock_commodity=Commodity.SOYBEAN_MEAL,
+        shock_percent=30,
+    )
+    result = data.run_dashboard_simulation(config)
+    comparison = result.comparison
+    assert comparison is not None and isinstance(
+        comparison.drought_config, ConsumptionShockConfig
+    )
+    assert comparison.baseline.initial_state == comparison.drought.initial_state
+    first = comparison.monthly_metrics()[0]
+    market = next(
+        item
+        for item in first.markets
+        if item.region == Region.EUROPEAN_UNION
+        and item.commodity == Commodity.SOYBEAN_MEAL
+    )
+    assert market.demand_tonnes.drought > market.demand_tonnes.baseline
+    single = data.run_dashboard_simulation(
+        data.RunConfig(
+            "Synthetic",
+            "Consumption Shock",
+            shock_kind="Consumption Shock",
+            shock_region=Region.EUROPEAN_UNION,
+            shock_commodity=Commodity.SOYBEAN_MEAL,
+            shock_percent=30,
+        )
+    )
+    assert single.comparison is None and single.baseline == comparison.drought
+
+
+def test_consumption_controls_and_comparison_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Execute the selected meal demand experiment only when requested."""
+    from soybean_sim.models import Commodity, Region
+
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Consumption Shock").run()
+    app.sidebar.selectbox[2].select(Region.EUROPEAN_UNION).run()
+    app.sidebar.selectbox[3].select(Commodity.SOYBEAN_MEAL).run()
+    app.slider[0].set_value(30).run()
+    app.sidebar.selectbox[4].select("Compare with Baseline").run()
+    execute.assert_not_called()
+    app.button[0].click().run(timeout=30)
+    assert not app.exception and not app.error
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert not app.exception and not app.error
+    assert any("soybean meal consumption" in item.value for item in app.caption)
+    assert any("not recorded" in item.value for item in app.caption)
+    assert (
+        app.session_state["dashboard_result"].config.shock_commodity
+        == Commodity.SOYBEAN_MEAL
+    )
+    execute.assert_called_once()

@@ -11,6 +11,7 @@ import streamlit as st
 from soybean_sim.market import MarketFlowType
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
+    ConsumptionShockConfig,
     MetricComparison,
     MonthlyComparison,
     ProductionShockConfig,
@@ -31,7 +32,10 @@ def _sum_pairs(pairs: Iterable[MetricComparison]) -> MetricComparison:
 
 
 def _production(
-    result: SimulationResult, region: Region = Region.ARGENTINA
+    result: SimulationResult,
+    region: Region = Region.ARGENTINA,
+    commodity: Commodity = Commodity.SOYBEANS,
+    flow_type: MarketFlowType = MarketFlowType.SUPPLY,
 ) -> float | None:
     """Sum recorded regional soybean supply, or return None if unrecorded."""
     quantities = []
@@ -40,8 +44,8 @@ def _production(
             flow.quantity_tonnes
             for flow in month.market_flows
             if flow.region == region
-            and flow.commodity == Commodity.SOYBEANS
-            and flow.flow_type == MarketFlowType.SUPPLY
+            and flow.commodity == commodity
+            and flow.flow_type == flow_type
         ]
         if not observations:
             return None
@@ -56,9 +60,20 @@ def _production_comparison(comparison: ScenarioComparison) -> MetricComparison |
         if isinstance(comparison.drought_config, ProductionShockConfig)
         else Region.ARGENTINA
     )
+    config = comparison.drought_config
+    commodity = (
+        config.commodity
+        if isinstance(config, ConsumptionShockConfig)
+        else Commodity.SOYBEANS
+    )
+    flow_type = (
+        MarketFlowType.CONSUMPTION
+        if isinstance(config, ConsumptionShockConfig)
+        else MarketFlowType.SUPPLY
+    )
     baseline, drought = (
-        _production(comparison.baseline, region),
-        _production(comparison.drought, region),
+        _production(comparison.baseline, region, commodity, flow_type),
+        _production(comparison.drought, region, commodity, flow_type),
     )
     if baseline is None or drought is None:
         return None
@@ -304,7 +319,7 @@ def render(comparison: ScenarioComparison | None) -> None:
         st.error("Comparison data has no complete regional market coverage.")
         return
     st.success("Baseline and modified scenario results loaded.")
-    st.subheader("Baseline vs Production Shock")
+    st.subheader("Baseline vs Shock")
     config = comparison.drought_config
     shock_region = (
         config.region if isinstance(config, ProductionShockConfig) else Region.ARGENTINA
@@ -314,10 +329,19 @@ def render(comparison: ScenarioComparison | None) -> None:
         if isinstance(config, ProductionShockConfig)
         else -100 * config.production_reduction_fraction
     )
+    commodity_label = (
+        _label(config.commodity)
+        if isinstance(config, ConsumptionShockConfig)
+        else "Soybean"
+    )
+    shock_label = (
+        "consumption" if isinstance(config, ConsumptionShockConfig) else "production"
+    )
     period = _drought_period(config.start_month, config.end_month)
     st.caption(
         f"{months[0].month:%Y-%m} to {months[-1].month:%Y-%m} · "
-        f"{len(months)} months · {_label(shock_region)} soybean production "
+        f"{len(months)} months · {_label(shock_region)} "
+        f"{commodity_label.lower()} {shock_label} "
         f"{_change(change, '%')} · Shock period: {period} (inclusive)"
     )
     st.caption("Simulated results are not forecasts.")
@@ -342,15 +366,64 @@ def render(comparison: ScenarioComparison | None) -> None:
         crushing = _crushing(months, region)
         cards = [*st.columns(2), *st.columns(2)]
         with cards[0]:
-            st.caption(f"{_label(shock_region)} soybean supply")
+            st.caption(
+                f"{_label(shock_region)} {commodity_label.lower()} "
+                f"requested {shock_label}"
+            )
             _card(
-                "Production Shock",
+                "Consumption Shock"
+                if isinstance(config, ConsumptionShockConfig)
+                else "Production Shock",
                 "Unavailable" if production is None else _percent(production),
                 production,
                 "t",
             )
             if production is not None:
                 st.caption(f"Difference: {_change(production.difference, 't')}")
+            if isinstance(config, ConsumptionShockConfig):
+                totals = []
+                for result in (comparison.baseline, comparison.drought):
+                    records = [
+                        next(
+                            (
+                                item
+                                for item in (month.consumption_results or ())
+                                if item.region == config.region
+                                and item.commodity == config.commodity
+                            ),
+                            None,
+                        )
+                        for month in result.monthly_results
+                    ]
+                    totals.append(
+                        None
+                        if any(item is None for item in records)
+                        else (
+                            math.fsum(
+                                item.fulfilled_tonnes
+                                for item in records
+                                if item is not None
+                            ),
+                            math.fsum(
+                                item.unmet_tonnes
+                                for item in records
+                                if item is not None
+                            ),
+                        )
+                    )
+                if any(item is None for item in totals):
+                    st.caption(
+                        "Fulfilled and unmet consumption are not recorded for this run."
+                    )
+                else:
+                    for label, item in zip(
+                        ("Baseline", "Modified Scenario"), totals, strict=True
+                    ):
+                        assert item is not None
+                        st.caption(
+                            f"{label}: fulfilled {item[0]:,.2f} t; "
+                            f"unmet {item[1]:,.2f} t"
+                        )
         with cards[1]:
             _card(
                 "Crushing Impact",

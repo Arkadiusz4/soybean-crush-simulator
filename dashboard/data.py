@@ -13,9 +13,11 @@ from soybean_sim.data.world_bank import load_world_bank_prices
 from soybean_sim.market import PriceDynamicsConfig
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
+    ConsumptionShockConfig,
     HistoricalMarketInputs,
     ProductionShockConfig,
     ScenarioComparison,
+    apply_consumption_shock,
     apply_production_shock,
     calibrate_historical_crushers,
     compare_historical_market,
@@ -59,11 +61,13 @@ class RunConfig:
     year: int = 2025
     shock_region: Region = Region.ARGENTINA
     shock_percent: float | None = None
+    shock_kind: str = "Production Shock"
+    shock_commodity: Commodity = Commodity.SOYBEAN_MEAL
 
     @property
     def scenario(self) -> str:
         """Identify the configured market scenario."""
-        return "Baseline" if self.mode == "Baseline" else "Production Shock"
+        return "Baseline" if self.mode == "Baseline" else self.shock_kind
 
     @property
     def output(self) -> str:
@@ -76,12 +80,16 @@ class RunConfig:
 
     def __post_init__(self) -> None:
         """Normalize inactive drought controls and full-period bounds."""
+        if self.mode == "Consumption Shock":
+            object.__setattr__(self, "shock_kind", "Consumption Shock")
         if self.mode == "Baseline":
             object.__setattr__(self, "reduction_percent", 30)
             object.__setattr__(self, "drought_start", None)
             object.__setattr__(self, "drought_end", None)
             object.__setattr__(self, "shock_region", Region.ARGENTINA)
             object.__setattr__(self, "shock_percent", None)
+            object.__setattr__(self, "shock_kind", "Production Shock")
+            object.__setattr__(self, "shock_commodity", Commodity.SOYBEAN_MEAL)
         else:
             object.__setattr__(
                 self, "drought_start", self.drought_start or date(self.year, 1, 1)
@@ -179,8 +187,11 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         "Baseline vs Drought",
         "Argentina Drought",
         "Production Shock",
+        "Consumption Shock",
     ):
         raise ValueError(f"Unsupported simulation mode: {config.mode}")
+    if config.shock_kind not in ("Production Shock", "Consumption Shock"):
+        raise ValueError(f"Unsupported shock type: {config.shock_kind}")
     paired = config.mode == "Baseline vs Drought"
     shocked = config.mode != "Baseline"
     if (
@@ -209,7 +220,15 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         else -float(config.reduction_percent)
     )
     shock = (
-        ProductionShockConfig(
+        ConsumptionShockConfig(
+            region=config.shock_region,
+            commodity=config.shock_commodity,
+            percentage_change=change,
+            start_month=config.drought_start,
+            end_month=config.drought_end,
+        )
+        if shocked and config.shock_kind == "Consumption Shock"
+        else ProductionShockConfig(
             region=config.shock_region,
             percentage_change=change,
             start_month=config.drought_start,
@@ -245,7 +264,9 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
             create_agents(case.crusher_config),
             months=12,
             crusher_configs={"crusher-ar": case.crusher_config},
-            monthly_flows=apply_production_shock(case.flows, config=shock)
+            monthly_flows=apply_consumption_shock(case.flows, config=shock)
+            if isinstance(shock, ConsumptionShockConfig)
+            else apply_production_shock(case.flows, config=shock)
             if shock is not None
             else case.flows,
             price_dynamics_config=case.price_config,

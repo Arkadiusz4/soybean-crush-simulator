@@ -50,6 +50,57 @@ class ProductionShockConfig(BaseModel):
         return self
 
 
+class ConsumptionShockConfig(ProductionShockConfig):
+    """Change meal or oil consumption; absent flow records remain absent."""
+
+    commodity: Commodity
+
+    @field_validator("commodity")
+    @classmethod
+    def supported_commodity(cls, commodity: Commodity) -> Commodity:
+        """Exclude raw soybean consumption from this physical model."""
+        if commodity == Commodity.SOYBEANS:
+            raise ValueError("soybean consumption shocks are not supported")
+        return commodity
+
+
+def apply_consumption_shock(
+    flows: Iterable[MarketFlow], *, config: ConsumptionShockConfig
+) -> tuple[MarketFlow, ...]:
+    """Adjust matching requested consumption without creating missing records."""
+    if not isinstance(config, ConsumptionShockConfig):
+        raise ScenarioError("config must be a ConsumptionShockConfig")
+    try:
+        settings = ConsumptionShockConfig.model_validate(
+            config.model_dump(warnings=False)
+        )
+        result = []
+        for flow in _validated_flows(flows, allow_soybean_consumption=True):
+            active = (
+                flow.region == settings.region
+                and flow.commodity == settings.commodity
+                and flow.flow_type == MarketFlowType.CONSUMPTION
+                and (settings.start_month is None or flow.month >= settings.start_month)
+                and (settings.end_month is None or flow.month <= settings.end_month)
+            )
+            result.append(
+                MarketFlow.model_validate(
+                    {
+                        **flow.model_dump(),
+                        "quantity_tonnes": flow.quantity_tonnes
+                        * (1 + settings.percentage_change / 100),
+                    }
+                )
+                if active
+                else flow
+            )
+        return tuple(result)
+    except ValidationError as exc:
+        raise ScenarioError(
+            f"Invalid consumption shock or adjusted demand: {exc}"
+        ) from exc
+
+
 def apply_production_shock(
     flows: Iterable[MarketFlow], *, config: ProductionShockConfig
 ) -> tuple[MarketFlow, ...]:
