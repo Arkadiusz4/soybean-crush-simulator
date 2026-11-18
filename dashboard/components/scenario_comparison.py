@@ -11,8 +11,12 @@ import streamlit as st
 from soybean_sim.market import MarketFlowType
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
+    ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
+    CrusherParameterShockConfig,
     MetricComparison,
     MonthlyComparison,
+    ProductionShockConfig,
     RegionalMarketComparison,
     ScenarioComparison,
     ScenarioError,
@@ -29,16 +33,21 @@ def _sum_pairs(pairs: Iterable[MetricComparison]) -> MetricComparison:
     )
 
 
-def _production(result: SimulationResult) -> float | None:
-    """Sum recorded Argentina soybean supply, or return None if unrecorded."""
+def _production(
+    result: SimulationResult,
+    region: Region = Region.ARGENTINA,
+    commodity: Commodity = Commodity.SOYBEANS,
+    flow_type: MarketFlowType = MarketFlowType.SUPPLY,
+) -> float | None:
+    """Sum recorded regional soybean supply, or return None if unrecorded."""
     quantities = []
     for month in result.monthly_results:
         observations = [
             flow.quantity_tonnes
             for flow in month.market_flows
-            if flow.region == Region.ARGENTINA
-            and flow.commodity == Commodity.SOYBEANS
-            and flow.flow_type == MarketFlowType.SUPPLY
+            if flow.region == region
+            and flow.commodity == commodity
+            and flow.flow_type == flow_type
         ]
         if not observations:
             return None
@@ -48,9 +57,25 @@ def _production(result: SimulationResult) -> float | None:
 
 def _production_comparison(comparison: ScenarioComparison) -> MetricComparison | None:
     """Compare recorded production without substituting missing flows with zero."""
+    region = (
+        comparison.drought_config.region
+        if isinstance(comparison.drought_config, ProductionShockConfig)
+        else Region.ARGENTINA
+    )
+    config = comparison.drought_config
+    commodity = (
+        config.commodity
+        if isinstance(config, ConsumptionShockConfig)
+        else Commodity.SOYBEANS
+    )
+    flow_type = (
+        MarketFlowType.CONSUMPTION
+        if isinstance(config, ConsumptionShockConfig)
+        else MarketFlowType.SUPPLY
+    )
     baseline, drought = (
-        _production(comparison.baseline),
-        _production(comparison.drought),
+        _production(comparison.baseline, region, commodity, flow_type),
+        _production(comparison.drought, region, commodity, flow_type),
     )
     if baseline is None or drought is None:
         return None
@@ -112,7 +137,8 @@ def _percent(value: MetricComparison) -> str:
 def _pair_caption(value: MetricComparison, unit: str) -> str:
     """Describe a paired total and its signed drought-minus-baseline change."""
     return (
-        f"Baseline {value.baseline:,.2f} {unit} | Drought {value.drought:,.2f} {unit}"
+        f"Baseline {value.baseline:,.2f} {unit} | "
+        f"Modified Scenario {value.drought:,.2f} {unit}"
         f" | Difference {_change(value.difference, unit)}"
     )
 
@@ -125,7 +151,7 @@ def _card(label: str, value: str, pair: MetricComparison | None, unit: str) -> N
             st.caption("Recorded supply unavailable")
         else:
             st.caption(f"Baseline: {pair.baseline:,.2f} {unit}")
-            st.caption(f"Drought: {pair.drought:,.2f} {unit}")
+            st.caption(f"Modified Scenario: {pair.drought:,.2f} {unit}")
 
 
 def _drought_period(start: date | None, end: date | None) -> str:
@@ -150,7 +176,7 @@ def _chart(
     """Render paired monthly values on a chronological, clearly labeled axis."""
     frame = pd.DataFrame(
         [(month, item.baseline, item.drought) for month, item in values],
-        columns=["Month", "Baseline", "Drought"],
+        columns=["Month", "Baseline", "Modified Scenario"],
     ).melt(id_vars="Month", var_name="Scenario", value_name="Value")
     base = alt.Chart(frame).encode(
         x=alt.X(
@@ -199,7 +225,9 @@ def _line_chart(
 def _prices(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
     """Plot regional prices observed during, rather than after, each month."""
     values = [(month, market.price_usd_per_tonne) for month, market in markets]
-    _line_chart("Baseline vs Drought Price Trends", values, "Observed price (USD/t)")
+    _line_chart(
+        "Baseline vs Modified Scenario Price Trends", values, "Observed price (USD/t)"
+    )
     st.caption("Prices are observations during each simulated month.")
     st.caption(f"First: {_pair_caption(values[0][1], 'USD/t')}")
     st.caption(f"Last: {_pair_caption(values[-1][1], 'USD/t')}")
@@ -250,11 +278,11 @@ def _trade(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
         {
             "Month": month,
             "Baseline imports (t)": item.imports_tonnes.baseline,
-            "Drought imports (t)": item.imports_tonnes.drought,
+            "Modified imports (t)": item.imports_tonnes.drought,
             "Baseline exports (t)": item.exports_tonnes.baseline,
-            "Drought exports (t)": item.exports_tonnes.drought,
+            "Modified exports (t)": item.exports_tonnes.drought,
             "Baseline net (t)": item.net_trade_tonnes.baseline,
-            "Drought net (t)": item.net_trade_tonnes.drought,
+            "Modified net (t)": item.net_trade_tonnes.drought,
             "Net change": _change(item.net_trade_tonnes.difference, "t"),
         }
         for month, item in markets
@@ -272,14 +300,19 @@ def render(comparison: ScenarioComparison | None) -> None:
     st.header("Scenario Comparison")
     if comparison is None:
         st.info(
-            "Comparison results are not loaded. Use 'Load demo results' in the sidebar."
+            "Comparison results are not loaded. Use 'Run Simulation' "
+            "in the sidebar to load a comparison."
         )
         return
     try:
         months = tuple(
             sorted(comparison.monthly_metrics(), key=lambda month: month.month)
         )
-        production = _production_comparison(comparison)
+        production = (
+            None
+            if isinstance(comparison.drought_config, CrusherParameterShockConfig)
+            else _production_comparison(comparison)
+        )
         total_crushing = _sum_pairs(
             value for month in months for _, value in month.crushing_tonnes
         )
@@ -291,23 +324,35 @@ def render(comparison: ScenarioComparison | None) -> None:
     if not months or not coverage:
         st.error("Comparison data has no complete regional market coverage.")
         return
-    st.success("Baseline and drought results loaded.")
-    st.subheader("Baseline vs Argentina Drought")
+    st.success("Baseline and modified scenario results loaded.")
+    st.subheader("Baseline vs Shock")
     config = comparison.drought_config
-    period = _drought_period(config.start_month, config.end_month)
-    st.caption(
-        f"{months[0].month:%Y-%m} to {months[-1].month:%Y-%m} · "
-        f"{len(months)} months · Configured reduction: "
-        f"{config.production_reduction_fraction:.1%} · "
-        f"Configured drought period: {period} (inclusive)"
-    )
-    st.caption("The sidebar demo uses synthetic results; it is not a forecast.")
+    if isinstance(config, CrusherParameterShockConfig):
+        st.caption(
+            f"{_label(config.region)} | "
+            f"Capacity {_change(config.capacity_change_percent, '%')}, "
+            f"cost {_change(config.processing_cost_change_percent, '%')}"
+        )
+        shock_region = config.region
+        commodity_label = "Soybean"
+    else:
+        shock_region = (
+            config.region
+            if isinstance(config, ProductionShockConfig)
+            else Region.ARGENTINA
+        )
+        commodity_label = (
+            _label(config.commodity)
+            if isinstance(config, ConsumptionShockConfig)
+            else "Soybean"
+        )
+    if not isinstance(config, CrusherParameterShockConfig):
+        _shock_metadata(config, months)
+    st.caption("Simulated results are not forecasts.")
     regions = sorted({region for region, _ in coverage})
     filter_columns = st.columns(2)
     with filter_columns[0]:
-        region = _select(
-            "Region", regions, Region.ARGENTINA, "scenario_comparison_region"
-        )
+        region = _select("Region", regions, shock_region, "scenario_comparison_region")
     assert isinstance(region, Region)
     commodities = sorted({commodity for key, commodity in coverage if key == region})
     with filter_columns[1]:
@@ -323,12 +368,29 @@ def render(comparison: ScenarioComparison | None) -> None:
         crushing = _crushing(months, region)
         cards = [*st.columns(2), *st.columns(2)]
         with cards[0]:
-            _card(
-                "Production Shock",
-                "Unavailable" if production is None else _percent(production),
-                production,
-                "t",
-            )
+            if isinstance(config, CrusherParameterShockConfig):
+                before = (comparison.baseline_crusher_configs or {})[config.region]
+                after = (comparison.modified_crusher_configs or {})[config.region]
+                _card(
+                    "Capacity (t/month)",
+                    _change(
+                        after.monthly_capacity_tonnes - before.monthly_capacity_tonnes,
+                        "t/month",
+                    ),
+                    MetricComparison(
+                        baseline=before.monthly_capacity_tonnes,
+                        drought=after.monthly_capacity_tonnes,
+                    ),
+                    "t/month",
+                )
+                st.caption(
+                    f"Processing cost: {before.processing_cost_usd_per_tonne:,.2f} to "
+                    f"{after.processing_cost_usd_per_tonne:,.2f} USD/t"
+                )
+            else:
+                _shock_card(
+                    comparison, production, config, shock_region, commodity_label
+                )
         with cards[1]:
             _card(
                 "Crushing Impact",
@@ -338,10 +400,7 @@ def render(comparison: ScenarioComparison | None) -> None:
             )
         with cards[2]:
             _card(
-                "Trade Impact",
-                _change(total_trade.difference, "t"),
-                total_trade,
-                "t",
+                "Trade Impact", _change(total_trade.difference, "t"), total_trade, "t"
             )
         with cards[3]:
             price = markets[-1][1].price_usd_per_tonne
@@ -352,3 +411,96 @@ def render(comparison: ScenarioComparison | None) -> None:
         _trade(markets)
     except (ValueError, OverflowError, StopIteration) as exc:
         st.error(f"Cannot display invalid comparison data: {exc}")
+
+
+def _shock_metadata(
+    config: ArgentinaDroughtConfig | ProductionShockConfig | ConsumptionShockConfig,
+    months: tuple[MonthlyComparison, ...],
+) -> None:
+    """Describe a recorded production or consumption shock."""
+    shock_region = (
+        config.region if isinstance(config, ProductionShockConfig) else Region.ARGENTINA
+    )
+    change = (
+        config.percentage_change
+        if isinstance(config, ProductionShockConfig)
+        else -100 * config.production_reduction_fraction
+    )
+    commodity_label = (
+        _label(config.commodity)
+        if isinstance(config, ConsumptionShockConfig)
+        else "Soybean"
+    )
+    shock_label = (
+        "consumption" if isinstance(config, ConsumptionShockConfig) else "production"
+    )
+    period = _drought_period(config.start_month, config.end_month)
+    st.caption(
+        f"{months[0].month:%Y-%m} to {months[-1].month:%Y-%m} · "
+        f"{len(months)} months · {_label(shock_region)} "
+        f"{commodity_label.lower()} {shock_label} "
+        f"{_change(change, '%')} · Shock period: {period} (inclusive)"
+    )
+
+
+def _shock_card(
+    comparison: ScenarioComparison,
+    production: MetricComparison | None,
+    config: ArgentinaDroughtConfig | ProductionShockConfig | ConsumptionShockConfig,
+    shock_region: Region,
+    commodity_label: str,
+) -> None:
+    """Present recorded supply or demand and any fulfilled consumption totals."""
+    shock_label = (
+        "consumption" if isinstance(config, ConsumptionShockConfig) else "production"
+    )
+    st.caption(
+        f"{_label(shock_region)} {commodity_label.lower()} requested {shock_label}"
+    )
+    _card(
+        "Consumption Shock"
+        if isinstance(config, ConsumptionShockConfig)
+        else "Production Shock",
+        "Unavailable" if production is None else _percent(production),
+        production,
+        "t",
+    )
+    if production is not None:
+        st.caption(f"Difference: {_change(production.difference, 't')}")
+    if isinstance(config, ConsumptionShockConfig):
+        totals = []
+        for result in (comparison.baseline, comparison.drought):
+            records = [
+                next(
+                    (
+                        item
+                        for item in (month.consumption_results or ())
+                        if item.region == config.region
+                        and item.commodity == config.commodity
+                    ),
+                    None,
+                )
+                for month in result.monthly_results
+            ]
+            totals.append(
+                None
+                if any(item is None for item in records)
+                else (
+                    math.fsum(
+                        item.fulfilled_tonnes for item in records if item is not None
+                    ),
+                    math.fsum(
+                        item.unmet_tonnes for item in records if item is not None
+                    ),
+                )
+            )
+        if any(item is None for item in totals):
+            st.caption("Fulfilled and unmet consumption are not recorded for this run.")
+        else:
+            for label, item in zip(
+                ("Baseline", "Modified Scenario"), totals, strict=True
+            ):
+                assert item is not None
+                st.caption(
+                    f"{label}: fulfilled {item[0]:,.2f} t; unmet {item[1]:,.2f} t"
+                )

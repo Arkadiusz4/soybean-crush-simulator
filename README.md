@@ -32,9 +32,8 @@ immutable market state, physical crushing settlement, a deterministic monthly
 engine with frozen reference prices, tests, and CI.
 
 The engine also supports physical trade, dynamic regional prices, and controlled
-baseline/drought comparisons. The Streamlit dashboard currently contains only
-navigation and placeholders backed by a synthetic demonstration. The CLI does
-not start simulation runs.
+baseline/drought comparisons. The dashboard displays simulation results; the CLI
+does not start simulation runs.
 
 ## Technology stack
 
@@ -77,10 +76,37 @@ uv run streamlit run dashboard/app.py
 # or: just dashboard
 ```
 
-Select **Load demo results** to run the existing deterministic synthetic baseline
-and Argentina drought demonstration. The three sections currently show
-placeholders and result availability; charts and controls are planned. Results
-are retained per session when navigating. No historical files are required.
+Choose synthetic or historical data, then select a baseline or regional soybean
+production shock or a soybean meal/oil consumption shock. Changes range from
+−100% to +1000%. Any supported region and change can also be compared with a baseline. Press
+**Run Simulation** to execute; changes to controls do not run automatically, and
+the last successful result remains available while navigating.
+
+The standard production slider covers −100% to +100% in 5% steps. Larger
+increases are available separately under stress testing. For paired runs,
+Overview and Market Analytics show the baseline; Scenario Comparison shows both.
+
+Historical mode requires `data/raw/psd_oilseeds.csv` and
+`data/raw/CMO-Historical-Data-Monthly.xlsx`. The dashboard checks available
+calendar years for complete local inputs and valid crusher calibration. Calendar
+year N uses USDA marketing year N−1 and January N reference prices. Marketing-year
+opening stocks are not reconstructed January inventories. Consumption may be unmet
+and simulated regional prices may diverge from reference prices.
+Results are scenarios, not forecasts or historical reconstructions.
+
+Consumption shocks change requested consumption, not guaranteed fulfillment.
+Historical runs report unmet demand; runs without demand-aware accounting do not
+record fulfilled or unmet totals. A missing input flow remains missing.
+
+Crusher Configuration changes one region's capacity and processing cost relative
+to its baseline. Capacity must stay positive, so the regular capacity control
+starts at −95%; cost may fall to zero. The synthetic demo has only an Argentina
+Crusher. Historical runs expose all four calibrated regional Crushers.
+The preview shows configuration, not executed throughput. Capacity increases may
+have no effect when soybeans or profitability limit processing, and cost changes
+may stay within the same utilization band. Historical capacities are derived from
+USDA annual crush rather than measured plant capacity. Product and residual yields
+stay unchanged; additional output does not guarantee fulfillment of demand.
 
 The app supplies shared results to independent component modules:
 

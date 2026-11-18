@@ -163,6 +163,64 @@ def _prices(result: SimulationResult, region: Region, commodity: Commodity) -> N
     )
 
 
+def _indexed(
+    series: list[tuple[date, float | None]],
+) -> list[tuple[date, float | None]]:
+    """Index observed prices to their first observation, preserving gaps."""
+    first = next((value for _, value in series if value is not None), None)
+    if first is None or first == 0:
+        return [(month, None) for month, _ in series]
+    return [
+        (month, None if value is None else value / first * 100)
+        for month, value in series
+    ]
+
+
+def _multi_chart(
+    title: str, series: dict[str, list[tuple[date, float | None]]], unit: str
+) -> None:
+    """Display selected commodity observations without filling missing values."""
+    st.subheader(title)
+    if not any(value is not None for values in series.values() for _, value in values):
+        st.info("No observations are available for this selection.")
+        return
+    frame = pd.DataFrame(
+        {
+            label: pd.Series(dict(values), dtype=float)
+            for label, values in series.items()
+        }
+    ).sort_index()
+    frame.index.name = "Month"
+    st.line_chart(frame, x_label="Month", y_label=unit, height=300)
+    if frame.isna().any().any():
+        st.caption("Missing observations are shown as gaps.")
+
+
+def _combined_trade_series(
+    result: SimulationResult, region: Region, commodities: tuple[Commodity, ...]
+) -> list[tuple[date, float | None, float | None]]:
+    """Combine distinct selected commodities without counting trades twice."""
+    series = [
+        _trade_series(result, region, commodity) for commodity in set(commodities)
+    ]
+    combined = []
+    for rows in zip(*series, strict=True):
+        incoming = [row[1] for row in rows]
+        outgoing = [row[2] for row in rows]
+        combined.append(
+            (
+                rows[0][0],
+                math.fsum(value for value in incoming if value is not None)
+                if all(value is not None for value in incoming)
+                else None,
+                math.fsum(value for value in outgoing if value is not None)
+                if all(value is not None for value in outgoing)
+                else None,
+            )
+        )
+    return combined
+
+
 def _crushing(result: SimulationResult, region: Region) -> None:
     """Chart executed crushing irrespective of the selected product."""
     st.subheader("Monthly Crushing")
@@ -178,11 +236,114 @@ def _crushing(result: SimulationResult, region: Region) -> None:
         st.caption("Some crushing records are unavailable.")
 
 
-def _trade(result: SimulationResult, region: Region, commodity: Commodity) -> None:
+def _crushing_regions(result: SimulationResult, regions: list[Region]) -> None:
+    """Compare actual crushing by region, independent of commodity filters."""
+    st.subheader("Monthly Crushing")
+    series = {_label(region): _crushing_series(result, region) for region in regions}
+    if all(value == 0 for values in series.values() for _, value in values):
+        st.info("No soybean crushing was executed in the selected regions.")
+        return
+    frame = pd.DataFrame(
+        {name: pd.Series(dict(values), dtype=float) for name, values in series.items()}
+    ).sort_index()
+    frame.index.name = "Month"
+    st.bar_chart(frame, x_label="Month", y_label="Soybean crushing (t)", stack=False)
+    if frame.isna().any().any():
+        st.caption("Some crushing records are unavailable.")
+
+
+def _regional_trade_series(
+    result: SimulationResult, regions: list[Region], commodities: list[Commodity]
+) -> list[tuple[date, float | None, float | None, float | None]]:
+    """Count directional regional activity and each involved physical trade once."""
+    selected_regions, selected_commodities = set(regions), set(commodities)
+    output = []
+    for month in sorted(result.monthly_results, key=lambda item: item.month):
+        trades = [
+            trade
+            for trade in month.executed_trades
+            if trade.commodity in selected_commodities
+            and (
+                trade.source_region in selected_regions
+                or trade.destination_region in selected_regions
+            )
+        ]
+        if not all(math.isfinite(trade.quantity_tonnes) for trade in trades):
+            output.append((month.month, None, None, None))
+            continue
+        imports = math.fsum(
+            trade.quantity_tonnes
+            for trade in trades
+            if trade.destination_region in selected_regions
+        )
+        exports = math.fsum(
+            trade.quantity_tonnes
+            for trade in trades
+            if trade.source_region in selected_regions
+        )
+        unique = math.fsum(trade.quantity_tonnes for trade in trades)
+        output.append((month.month, imports, exports, unique))
+    return output
+
+
+def _regional_trade(
+    result: SimulationResult, regions: list[Region], commodities: list[Commodity]
+) -> None:
+    """Show aggregate directional activity and unique involved trade volume."""
+    st.subheader("Interregional Trade")
+    st.caption(
+        "Selected-region imports and exports include transfers between selected "
+        "regions. External flows are excluded."
+    )
+    series = _regional_trade_series(result, regions, commodities)
+    if any(value is None for row in series for value in row[1:]):
+        st.info("Trade totals are unavailable because some records are invalid.")
+        return
+    imports = math.fsum(row[1] for row in series if row[1] is not None)
+    exports = math.fsum(row[2] for row in series if row[2] is not None)
+    volume = math.fsum(row[3] for row in series if row[3] is not None)
+    st.caption(
+        f"Regional imports: {imports:,.2f} t · Regional exports: {exports:,.2f} t · "
+        f"Unique involved trade: {volume:,.2f} t"
+    )
+    if imports == exports == 0:
+        st.info("No interregional trades were executed for this selection.")
+        return
+    frame = pd.DataFrame(
+        series,
+        columns=[
+            "Month",
+            "Regional imports (t)",
+            "Regional exports (t)",
+            "Unique involved trade (t)",
+        ],
+    ).set_index("Month")
+    st.bar_chart(
+        frame[["Regional imports (t)", "Regional exports (t)"]],
+        x_label="Month",
+        y_label="Trade (t)",
+        stack=False,
+    )
+    with st.expander("Monthly trade details"):
+        st.dataframe(frame, use_container_width=True)
+
+
+def _trade(
+    result: SimulationResult,
+    region: Region,
+    commodity: Commodity | tuple[Commodity, ...],
+) -> None:
     """Display executed imports, exports, and their net for the selected market."""
     st.subheader("Interregional Trade")
-    st.caption("Executed trades between modeled regions; external flows are excluded.")
-    series = _trade_series(result, region, commodity)
+    st.caption(
+        "Combined selected commodities between modeled regions; "
+        "external flows are excluded."
+    )
+    series = (
+        _trade_series(result, region, commodity)
+        if isinstance(commodity, Commodity)
+        else _combined_trade_series(result, region, commodity)
+    )
     incomplete = any(
         incoming is None or outgoing is None for _, incoming, outgoing in series
     )
@@ -219,9 +380,9 @@ def render(result: SimulationResult | None) -> None:
     """
     st.header("Market Analytics")
     if result is None:
-        st.info("Load demo results from the sidebar to explore market analytics.")
+        st.info("Use Run Simulation in the sidebar to explore market analytics.")
         return
-    st.success("Simulation baseline loaded.")
+    st.success("Simulation results loaded.")
     months = sorted(result.monthly_results, key=lambda item: item.month)
     regions, commodities = _coverage(result)
     st.caption(
@@ -233,15 +394,75 @@ def render(result: SimulationResult | None) -> None:
         return
     columns = st.columns(2)
     with columns[0]:
-        region = _selector("Region", regions, "market_analytics_region")
+        region_key = "market_analytics_regions"
+        if region_key in st.session_state:
+            st.session_state[region_key] = [
+                item for item in st.session_state[region_key] if item in regions
+            ]
+        selected_regions = st.multiselect(
+            "Regions",
+            regions,
+            default=[Region.ARGENTINA] if Region.ARGENTINA in regions else regions[:1],
+            format_func=_label,
+            key=region_key,
+        )
     with columns[1]:
-        commodity = _selector("Commodity", commodities, "market_analytics_commodity")
-    assert isinstance(region, Region) and isinstance(commodity, Commodity)
-    _prices(result, region, commodity)
-    _crushing(result, region)
-    _line_section(
-        "Inventory Evolution",
-        _inventory_series(result, region, commodity),
-        "Ending inventory (t)",
-    )
-    _trade(result, region, commodity)
+        key = "market_analytics_commodities"
+        if key in st.session_state:
+            st.session_state[key] = [
+                item for item in st.session_state[key] if item in commodities
+            ]
+        selected = st.multiselect(
+            "Commodities", commodities, default=commodities, format_func=_label, key=key
+        )
+    if not selected_regions:
+        st.info("Select at least one region to view market activity.")
+        return
+    if selected:
+        mode = st.radio(
+            "Price display",
+            ("Absolute prices", "Indexed (first observation = 100)"),
+            horizontal=True,
+        )
+        prices = {
+            f"{_label(region)} / {_label(commodity)}": _price_series(
+                result, region, commodity
+            )
+            for region in selected_regions
+            for commodity in selected
+        }
+        if len(prices) > 6:
+            st.caption(
+                "Many series are selected; narrow the filters for a clearer chart."
+            )
+        if mode.startswith("Indexed"):
+            prices = {label: _indexed(series) for label, series in prices.items()}
+            if any(
+                all(value is None for _, value in series) for series in prices.values()
+            ):
+                st.info(
+                    "An index is unavailable when its first price is zero or missing."
+                )
+        _multi_chart(
+            "Regional Price Trends",
+            prices,
+            "Price index (first observation = 100)"
+            if mode.startswith("Indexed")
+            else "Observed price (USD/t)",
+        )
+    else:
+        st.info("Select at least one commodity to view prices, inventories, and trade.")
+    _crushing_regions(result, selected_regions)
+    if selected:
+        _multi_chart(
+            "Inventory Evolution",
+            {
+                f"{_label(region)} / {_label(commodity)}": _inventory_series(
+                    result, region, commodity
+                )
+                for region in selected_regions
+                for commodity in selected
+            },
+            "Ending inventory (t)",
+        )
+        _regional_trade(result, selected_regions, selected)

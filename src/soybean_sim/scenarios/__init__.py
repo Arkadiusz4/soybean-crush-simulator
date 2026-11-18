@@ -4,8 +4,21 @@ from ._comparison import (
     ScenarioComparison,
     compare_simulation_results,
     run_argentina_drought_comparison,
+    run_production_shock_comparison,
 )
-from ._drought import ArgentinaDroughtConfig, ScenarioError, apply_argentina_drought
+from ._crusher_parameters import (
+    CrusherParameterShockConfig,
+    apply_crusher_parameter_shock,
+)
+from ._drought import (
+    ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
+    ProductionShockConfig,
+    ScenarioError,
+    apply_argentina_drought,
+    apply_consumption_shock,
+    apply_production_shock,
+)
 from ._historical import (
     HistoricalMarketError,
     HistoricalMarketInputs,
@@ -24,16 +37,22 @@ from ._metrics import MetricComparison, MonthlyComparison, RegionalMarketCompari
 
 __all__ = [
     "ArgentinaDroughtConfig",
+    "ConsumptionShockConfig",
+    "CrusherParameterShockConfig",
     "HistoricalMarketError",
     "HistoricalMarketInputs",
     "HistoricalMetadata",
     "HistoricalPreflight",
     "MetricComparison",
     "MonthlyComparison",
+    "ProductionShockConfig",
     "RegionalMarketComparison",
     "ScenarioComparison",
     "ScenarioError",
     "apply_argentina_drought",
+    "apply_consumption_shock",
+    "apply_crusher_parameter_shock",
+    "apply_production_shock",
     "calibrate_historical_crushers",
     "compare_historical_market",
     "compare_simulation_results",
@@ -42,4 +61,5 @@ __all__ = [
     "prepare_historical_market",
     "run_argentina_drought_comparison",
     "run_historical_market",
+    "run_production_shock_comparison",
 ]

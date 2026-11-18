@@ -219,3 +219,228 @@ def test_optional_real_historical_preflight(historical_script: ModuleType) -> No
         {f"crusher-{region.value}": config for region, config in crushers.items()},
     )
     assert prepared.model_dump_json() == original
+
+
+def test_historical_regional_production_shock(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType
+) -> None:
+    """Apply a Brazil supply increase through the calibrated historical engine."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    result = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        production_shock=ProductionShockConfig(
+            region=Region.BRAZIL,
+            percentage_change=20,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 3, 1),
+        ),
+    )
+    march = result.monthly_results[2]
+    flow = next(
+        item
+        for item in march.market_flows
+        if item.region == Region.BRAZIL
+        and item.commodity == Commodity.SOYBEANS
+        and item.flow_type == MarketFlowType.SUPPLY
+    )
+    assert flow.quantity_tonnes == pytest.approx(120)
+    assert result.initial_state == prepared.state
+
+
+def test_historical_drought_single_run(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Run one calibrated shock with the original state and partial flows."""
+    from soybean_sim.scenarios import _historical_market
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    original = prepared.model_dump_json()
+    run = _historical_market.run_simulation
+    calls = []
+
+    def recording_run(*args, **kwargs):
+        calls.append(kwargs)
+        return run(*args, **kwargs)
+
+    monkeypatch.setattr(_historical_market, "run_simulation", recording_run)
+    result = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ArgentinaDroughtConfig(
+            production_reduction_fraction=0.3,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 3, 1),
+        ),
+    )
+    assert len(calls) == 1 and calls[0]["demand_aware_consumption"] is True
+    assert result.initial_state == prepared.state and len(result.monthly_results) == 12
+    for month in result.monthly_results:
+        baseline = tuple(flow for flow in prepared.flows if flow.month == month.month)
+        assert (set(month.market_flows) != set(baseline)) == (
+            month.month == date(2025, 3, 1)
+        )
+    assert prepared.model_dump_json() == original
+
+
+def test_historical_regional_shock_comparison(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+) -> None:
+    """Keep calibrated demand-aware settlement when comparing a regional increase."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    before = prepared.model_dump_json()
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ProductionShockConfig(
+            region=Region.BRAZIL, percentage_change=20
+        ),
+    )
+    assert (
+        comparison.baseline.initial_state
+        == comparison.drought.initial_state
+        == prepared.state
+    )
+    assert all(
+        month.consumption_results is not None
+        for month in comparison.drought.monthly_results
+    )
+    assert len(comparison.monthly_metrics()) == 12
+    assert prepared.model_dump_json() == before
+
+
+@pytest.mark.parametrize("change", [-50, 50])
+def test_historical_brazil_shock_records_real_flows(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType, change: int
+) -> None:
+    """Run calibrated baseline and shock while preserving all unrelated inputs."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    args = dict(
+        crusher_configs=crushers, trader_configs=traders, price_dynamics_config=pricing
+    )
+    baseline = run_historical_market(prepared, **args)
+    modified = run_historical_market(
+        prepared,
+        **args,
+        production_shock=ProductionShockConfig(
+            region=Region.BRAZIL,
+            percentage_change=change,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 5, 1),
+        ),
+    )
+    assert baseline.initial_state == modified.initial_state == prepared.state
+    for before, after in zip(
+        baseline.monthly_results, modified.monthly_results, strict=True
+    ):
+        for original, changed in zip(
+            before.market_flows, after.market_flows, strict=True
+        ):
+            eligible = (
+                original.region == Region.BRAZIL
+                and original.commodity == Commodity.SOYBEANS
+                and original.flow_type == MarketFlowType.SUPPLY
+                and date(2025, 3, 1) <= original.month <= date(2025, 5, 1)
+            )
+            assert changed.quantity_tonnes == pytest.approx(
+                original.quantity_tonnes * (1 + change / 100)
+                if eligible
+                else original.quantity_tonnes
+            )
+
+
+def test_historical_consumption_shock_records_unmet_demand(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType
+) -> None:
+    """Keep shocked requested demand and record the physically unmet portion."""
+    from soybean_sim.scenarios import ConsumptionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ConsumptionShockConfig(
+            region=Region.EUROPEAN_UNION,
+            commodity=Commodity.SOYBEAN_MEAL,
+            percentage_change=1000,
+        ),
+    )
+    records = [
+        item
+        for month in comparison.drought.monthly_results
+        for item in (month.consumption_results or ())
+        if item.region == Region.EUROPEAN_UNION
+        and item.commodity == Commodity.SOYBEAN_MEAL
+    ]
+    assert len(records) == 12
+    assert any(item.unmet_tonnes > 0 for item in records)
+    assert all(
+        item.requested_tonnes
+        == pytest.approx(item.fulfilled_tonnes + item.unmet_tonnes)
+        for item in records
+    )
+    assert comparison.monthly_metrics()[0].markets
+
+
+def test_historical_crusher_parameter_execution(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+) -> None:
+    """Preserve calibrated yields and demand accounting in single and paired runs."""
+    from soybean_sim.scenarios import CrusherParameterShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    shock = CrusherParameterShockConfig(
+        region=Region.EUROPEAN_UNION, capacity_change_percent=25
+    )
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=shock,
+    )
+    single = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        crusher_parameter_shock=shock,
+    )
+    assert single == comparison.drought
+    assert comparison.baseline.initial_state == single.initial_state == prepared.state
+    assert all(
+        a.market_flows == b.market_flows
+        for a, b in zip(
+            comparison.baseline.monthly_results, single.monthly_results, strict=True
+        )
+    )
+    assert all(
+        month.consumption_results is not None for month in single.monthly_results
+    )
+    assert comparison.modified_crusher_configs[
+        Region.EUROPEAN_UNION
+    ].monthly_capacity_tonnes == pytest.approx(12.5)

@@ -33,7 +33,7 @@ def test_modules_import_without_executing_simulation(
         assert callable(component.render)
     app = AppTest.from_file(_APP).run()
     assert not app.exception
-    assert any("Load demo results" in item.value for item in app.info)
+    assert any("Run Simulation" in item.value for item in app.info)
     run.assert_not_called()
 
 
@@ -52,23 +52,24 @@ def test_empty_component_displays_message(
 
 def test_load_and_navigation_reuse_one_result(monkeypatch: pytest.MonkeyPatch) -> None:
     """Load once on request, then retain the paired models across section changes."""
-    load = Mock(wraps=data.load_demo_comparison)
-    monkeypatch.setattr(data, "load_demo_comparison", load)
+    load = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", load)
     app = AppTest.from_file(_APP).run()
     assert not app.exception
     load.assert_not_called()
     assert app.sidebar.radio[0].value == "Overview"
     assert any("No results loaded" in item.value for item in app.sidebar.caption)
-    assert any("not forecasts" in item.value for item in app.sidebar.caption)
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
     app.button[0].click().run(timeout=30)
     assert not app.exception
-    assert any("demo results loaded" in item.value for item in app.sidebar.caption)
-    assert any("baseline loaded" in item.value for item in app.success)
-    app.radio[0].set_value("Market Analytics").run()
-    assert any("baseline loaded" in item.value for item in app.success)
-    app.radio[0].set_value("Scenario Comparison").run()
-    assert any("drought results loaded" in item.value for item in app.success)
-    load.assert_called_once_with()
+    assert any("Last completed run" in item.value for item in app.sidebar.caption)
+    assert any("Simulation results loaded" in item.value for item in app.success)
+    app.sidebar.radio[0].set_value("Market Analytics").run()
+    assert any("Simulation results loaded" in item.value for item in app.success)
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert any("modified scenario results loaded" in item.value for item in app.success)
+    load.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -78,23 +79,33 @@ def test_load_failure_can_be_retried(
     monkeypatch: pytest.MonkeyPatch, failure: Exception
 ) -> None:
     """Log failures and allow retries without displaying stale successful results."""
-    load = Mock(side_effect=[failure, data.load_demo_comparison(), failure])
+    load = Mock(
+        side_effect=[
+            failure,
+            data.run_dashboard_simulation(
+                data.RunConfig("Synthetic", "Baseline vs Drought")
+            ),
+            failure,
+        ]
+    )
     logged = Mock()
     monkeypatch.setattr("logging.exception", logged)
-    monkeypatch.setattr(data, "load_demo_comparison", load)
+    monkeypatch.setattr(data, "run_dashboard_simulation", load)
     app = AppTest.from_file(_APP).run()
     app.button[0].click().run()
     assert not app.exception
-    assert any("Could not load" in item.value for item in app.error)
+    assert any("Simulation failed" in item.value for item in app.error)
     assert not app.success
-    logged.assert_called_once_with("Synthetic demonstration failed")
-    app.radio[0].set_value("Scenario Comparison").run()
-    assert any("Load demo results" in item.value for item in app.info)
+    logged.assert_called_once_with("Simulation execution failed")
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert any("Run Simulation" in item.value for item in app.info)
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
     app.button[0].click().run(timeout=30)
     assert not app.exception
-    assert any("drought results loaded" in item.value for item in app.success)
+    assert any("modified scenario results loaded" in item.value for item in app.success)
     assert load.call_count == 2
     app.button[0].click().run()
-    assert not app.success
-    assert any("Could not load" in item.value for item in app.error)
+    assert any("modified scenario results loaded" in item.value for item in app.success)
+    assert any("Simulation failed" in item.value for item in app.error)
     assert logged.call_count == 2

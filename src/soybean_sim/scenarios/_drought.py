@@ -23,6 +23,121 @@ class ScenarioError(ValueError):
     """Invalid scenario inputs or incompatible comparison records."""
 
 
+class ProductionShockConfig(BaseModel):
+    """Set a regional soybean supply change between -100% and +1000%."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    region: Region
+    percentage_change: Annotated[
+        float, Field(strict=True, ge=-100, le=1000, allow_inf_nan=False)
+    ]
+    start_month: Annotated[date, Field(strict=True)] | None = None
+    end_month: Annotated[date, Field(strict=True)] | None = None
+
+    @field_validator("start_month", "end_month")
+    @classmethod
+    def month_boundary(cls, month: date | None) -> date | None:
+        """Require calendar-month boundaries."""
+        if month is not None and month.day != 1:
+            raise ValueError("shock bounds must be the first day of a month")
+        return month
+
+    @model_validator(mode="after")
+    def ordered_bounds(self) -> Self:
+        """Require the inclusive interval to be ordered."""
+        if self.start_month and self.end_month and self.start_month > self.end_month:
+            raise ValueError("start_month must not be after end_month")
+        return self
+
+
+class ConsumptionShockConfig(ProductionShockConfig):
+    """Change meal or oil consumption; absent flow records remain absent."""
+
+    commodity: Commodity
+
+    @field_validator("commodity")
+    @classmethod
+    def supported_commodity(cls, commodity: Commodity) -> Commodity:
+        """Exclude raw soybean consumption from this physical model."""
+        if commodity == Commodity.SOYBEANS:
+            raise ValueError("soybean consumption shocks are not supported")
+        return commodity
+
+
+def apply_consumption_shock(
+    flows: Iterable[MarketFlow], *, config: ConsumptionShockConfig
+) -> tuple[MarketFlow, ...]:
+    """Adjust matching requested consumption without creating missing records."""
+    if not isinstance(config, ConsumptionShockConfig):
+        raise ScenarioError("config must be a ConsumptionShockConfig")
+    try:
+        settings = ConsumptionShockConfig.model_validate(
+            config.model_dump(warnings=False)
+        )
+        result = []
+        for flow in _validated_flows(flows, allow_soybean_consumption=True):
+            active = (
+                flow.region == settings.region
+                and flow.commodity == settings.commodity
+                and flow.flow_type == MarketFlowType.CONSUMPTION
+                and (settings.start_month is None or flow.month >= settings.start_month)
+                and (settings.end_month is None or flow.month <= settings.end_month)
+            )
+            result.append(
+                MarketFlow.model_validate(
+                    {
+                        **flow.model_dump(),
+                        "quantity_tonnes": flow.quantity_tonnes
+                        * (1 + settings.percentage_change / 100),
+                    }
+                )
+                if active
+                else flow
+            )
+        return tuple(result)
+    except ValidationError as exc:
+        raise ScenarioError(
+            f"Invalid consumption shock or adjusted demand: {exc}"
+        ) from exc
+
+
+def apply_production_shock(
+    flows: Iterable[MarketFlow], *, config: ProductionShockConfig
+) -> tuple[MarketFlow, ...]:
+    """Return validated, sorted flows with one regional soybean supply adjusted."""
+    if not isinstance(config, ProductionShockConfig):
+        raise ScenarioError("config must be a ProductionShockConfig")
+    try:
+        settings = ProductionShockConfig.model_validate(
+            config.model_dump(warnings=False)
+        )
+        result = []
+        for flow in _validated_flows(flows, allow_soybean_consumption=True):
+            active = (
+                flow.region == settings.region
+                and flow.commodity == Commodity.SOYBEANS
+                and flow.flow_type == MarketFlowType.SUPPLY
+                and (settings.start_month is None or flow.month >= settings.start_month)
+                and (settings.end_month is None or flow.month <= settings.end_month)
+            )
+            result.append(
+                MarketFlow.model_validate(
+                    {
+                        **flow.model_dump(),
+                        "quantity_tonnes": flow.quantity_tonnes
+                        * (1 + settings.percentage_change / 100),
+                    }
+                )
+                if active
+                else flow
+            )
+        return tuple(result)
+    except ValidationError as exc:
+        raise ScenarioError(
+            f"Invalid production shock or adjusted supply: {exc}"
+        ) from exc
+
+
 class ArgentinaDroughtConfig(BaseModel):
     """Set a synthetic production loss and optional inclusive calendar-month bounds.
 
@@ -111,11 +226,14 @@ def _validate_config(config: ArgentinaDroughtConfig) -> ArgentinaDroughtConfig:
         raise ScenarioError(f"Invalid drought configuration: {exc}") from exc
 
 
-def _validated_flows(flows: Iterable[MarketFlow]) -> tuple[MarketFlow, ...]:
+def _validated_flows(
+    flows: Iterable[MarketFlow], *, allow_soybean_consumption: bool = False
+) -> tuple[MarketFlow, ...]:
     """Check complete monthly records and unique keys before adjusting any quantities.
 
     Args:
         flows (Iterable[MarketFlow]): Candidate baseline records.
+        allow_soybean_consumption (bool): Preserve external soybean consumption.
 
     Returns:
         tuple[MarketFlow, ...]: Sorted, revalidated flows with supported consumption.
@@ -134,7 +252,8 @@ def _validated_flows(flows: Iterable[MarketFlow]) -> tuple[MarketFlow, ...]:
         except ValidationError as exc:
             raise ScenarioError(f"Invalid flow {position}: {exc}") from exc
         if (
-            validated.commodity == Commodity.SOYBEANS
+            not allow_soybean_consumption
+            and validated.commodity == Commodity.SOYBEANS
             and validated.flow_type == MarketFlowType.CONSUMPTION
         ):
             raise ScenarioError(f"Flow {position}: unsupported soybean consumption")

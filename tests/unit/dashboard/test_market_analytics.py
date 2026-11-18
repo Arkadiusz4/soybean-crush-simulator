@@ -27,7 +27,7 @@ def test_contract_and_empty_state() -> None:
     app.sidebar.radio[0].set_value("Market Analytics").run()
     assert not app.exception
     assert any("sidebar" in item.value for item in app.info)
-    assert not app.selectbox
+    assert not app.main.selectbox
 
 
 def test_prices_and_inventory_use_monthly_observations(demo: SimulationResult) -> None:
@@ -74,6 +74,53 @@ def test_trade_directions_and_zeroes(demo: SimulationResult) -> None:
     assert europe == [(month.month, 25.0, 0.0)]
     assert analytics._trade_series(first, Region.ARGENTINA, Commodity.SOYBEAN_MEAL) == [
         (month.month, 0.0, 0.0)
+    ]
+    combined = analytics._combined_trade_series(
+        first,
+        Region.ARGENTINA,
+        (Commodity.SOYBEANS, Commodity.SOYBEAN_MEAL, Commodity.SOYBEANS),
+    )
+    assert combined == [(month.month, 0.0, 25.0)]
+    regional = analytics._regional_trade_series(
+        first, [Region.ARGENTINA, Region.EUROPEAN_UNION], [Commodity.SOYBEANS]
+    )
+    assert regional == [(month.month, 25.0, 25.0, 25.0)]
+
+
+def test_multi_region_chart_series(
+    monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
+) -> None:
+    """Retain independent prices, inventories, and crushing for each region."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    regions = [Region.ARGENTINA, Region.BRAZIL]
+    analytics._crushing_regions(demo, regions)
+    frame = ui.bar_chart.call_args.args[0]
+    assert list(frame.columns) == ["Argentina", "Brazil"]
+    assert frame["Argentina"].iloc[0] > 0 and frame["Brazil"].iloc[0] == 0
+    prices = {
+        f"{analytics._label(region)} / Soybeans": analytics._indexed(
+            analytics._price_series(demo, region, Commodity.SOYBEANS)
+        )
+        for region in regions
+    }
+    assert all(series[0][1] == 100 for series in prices.values())
+    analytics._multi_chart("Prices", prices, "Index")
+    assert list(ui.line_chart.call_args.args[0].columns) == list(prices)
+
+
+def test_indexing_preserves_missing_values_and_zero_baseline() -> None:
+    """Normalize from the first observed price without inventing missing data."""
+    months = [date(2025, 1, 1), date(2025, 2, 1), date(2025, 3, 1)]
+    values = [(months[0], None), (months[1], 20.0), (months[2], 30.0)]
+    assert analytics._indexed(values) == [
+        (months[0], None),
+        (months[1], 100),
+        (months[2], 150),
+    ]
+    assert analytics._indexed([(months[0], 0.0), (months[1], 10.0)]) == [
+        (months[0], None),
+        (months[1], None),
     ]
 
 
@@ -178,33 +225,47 @@ def test_interactive_filters_reuse_unmodified_result(
     monkeypatch: pytest.MonkeyPatch, demo: SimulationResult
 ) -> None:
     """Change filters and navigate without rerunning or mutating the simulation."""
-    load = Mock(wraps=data.load_demo_comparison)
-    monkeypatch.setattr(data, "load_demo_comparison", load)
+    load = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", load)
     before = demo.model_dump_json()
     app = AppTest.from_file(
         Path(__file__).resolve().parents[3] / "dashboard/app.py"
     ).run()
     app.button[0].click().run(timeout=30)
     app.sidebar.radio[0].set_value("Market Analytics").run()
-    assert not app.exception and len(app.selectbox) == 2
+    assert not app.exception and len(app.main.multiselect) == 2
+    assert len(app.main.multiselect[1].value) == 3
     assert {item.value for item in app.subheader} >= {
         "Regional Price Trends",
         "Monthly Crushing",
         "Inventory Evolution",
         "Interregional Trade",
     }
-    app.selectbox[1].select(Commodity.SOYBEANS).run()
+    app.main.multiselect[1].set_value([Commodity.SOYBEANS]).run()
     assert app.expander[0].label == "Monthly trade details"
     assert len(app.dataframe[0].value) == 12
-    app.selectbox[0].select(Region.BRAZIL).run()
-    app.selectbox[1].select(Commodity.SOYBEAN_OIL).run()
+    app.main.multiselect[0].set_value([Region.BRAZIL]).run()
+    app.main.multiselect[1].set_value([Commodity.SOYBEAN_OIL]).run()
     assert not app.exception
-    assert app.selectbox[0].value == Region.BRAZIL
-    assert app.selectbox[1].value == Commodity.SOYBEAN_OIL
+    assert app.main.multiselect[0].value == [Region.BRAZIL]
+    assert app.main.multiselect[1].value == [Commodity.SOYBEAN_OIL]
     assert any("No soybean crushing" in item.value for item in app.info)
     assert any("No interregional trades" in item.value for item in app.info)
-    assert not app.expander
+    assert not app.main.expander
+    app.main.multiselect[0].set_value([Region.EUROPEAN_UNION]).run()
+    app.main.multiselect[1].set_value(
+        [Commodity.SOYBEAN_MEAL, Commodity.SOYBEAN_OIL]
+    ).run()
+    app.main.radio[0].set_value("Indexed (first observation = 100)").run()
+    assert not app.exception
+    app.main.multiselect[0].set_value(list(Region)).run()
+    assert not app.exception and len(app.main.multiselect[0].value) == 4
+    app.main.multiselect[0].set_value([]).run()
+    assert any("Select at least one region" in item.value for item in app.info)
+    app.main.multiselect[0].set_value([Region.EUROPEAN_UNION]).run()
+    app.main.multiselect[1].set_value([]).run()
+    assert any("Select at least one commodity" in item.value for item in app.info)
     app.sidebar.radio[0].set_value("Overview").run()
-    assert app.metric[0].value == "960.00"
-    load.assert_called_once_with()
+    assert app.metric[0].value == "960"
+    load.assert_called_once()
     assert demo.model_dump_json() == before

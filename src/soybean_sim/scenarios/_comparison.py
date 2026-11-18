@@ -1,6 +1,8 @@
 """Execute paired runs and expose validated, immutable comparison histories."""
 
+import math
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import replace
 from typing import Self
 
 from pydantic import (
@@ -22,18 +24,36 @@ from soybean_sim.agents import (
 from soybean_sim.market import (
     ExternalTradeFlow,
     MarketFlow,
+    MarketFlowType,
     MarketState,
     PriceDynamicsConfig,
     RegionalPrice,
 )
+from soybean_sim.models import Commodity, Region
 from soybean_sim.simulation import SimulationResult, run_simulation
 
 from . import _metrics
-from ._drought import ArgentinaDroughtConfig, ScenarioError, apply_argentina_drought
+from ._crusher_parameters import (
+    CrusherParameterShockConfig,
+    apply_crusher_parameter_shock,
+)
+from ._drought import (
+    ArgentinaDroughtConfig,
+    ConsumptionShockConfig,
+    ProductionShockConfig,
+    ScenarioError,
+    apply_argentina_drought,
+    apply_consumption_shock,
+    apply_production_shock,
+)
 
 
 class ScenarioComparison(BaseModel):
     """Retain paired histories once and derive same-month metrics on demand.
+
+    The legacy ``drought`` and ``drought_config`` fields also carry generic
+    flow-shock and Crusher-experiment results and their configuration. Crusher
+    experiments additionally retain both regional parameter maps for validation.
 
     Args:
         baseline (SimulationResult): Physical baseline history with regional records.
@@ -44,7 +64,15 @@ class ScenarioComparison(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     baseline: SimulationResult
     drought: SimulationResult
-    drought_config: ArgentinaDroughtConfig
+    drought_config: (
+        ArgentinaDroughtConfig
+        | ConsumptionShockConfig
+        | ProductionShockConfig
+        | CrusherParameterShockConfig
+    )
+
+    baseline_crusher_configs: dict[Region, CrusherConfig] | None = None
+    modified_crusher_configs: dict[Region, CrusherConfig] | None = None
 
     @field_validator("baseline", "drought", mode="after")
     @classmethod
@@ -62,8 +90,17 @@ class ScenarioComparison(BaseModel):
     @field_validator("drought_config", mode="after")
     @classmethod
     def revalidate_drought_config(
-        cls, value: ArgentinaDroughtConfig
-    ) -> ArgentinaDroughtConfig:
+        cls,
+        value: ArgentinaDroughtConfig
+        | ConsumptionShockConfig
+        | ProductionShockConfig
+        | CrusherParameterShockConfig,
+    ) -> (
+        ArgentinaDroughtConfig
+        | ConsumptionShockConfig
+        | ProductionShockConfig
+        | CrusherParameterShockConfig
+    ):
         """Validate configuration copies and serialized configuration fields.
 
         Args:
@@ -72,7 +109,7 @@ class ScenarioComparison(BaseModel):
         Returns:
             ArgentinaDroughtConfig: Revalidated reduction and date bounds.
         """
-        return ArgentinaDroughtConfig.model_validate(value.model_dump(warnings=False))
+        return type(value).model_validate(value.model_dump(warnings=False))
 
     @model_validator(mode="after")
     def histories_are_comparable(self) -> Self:
@@ -82,13 +119,43 @@ class ScenarioComparison(BaseModel):
             Self: Validated paired histories.
         """
         _metrics.validate_histories(self.baseline, self.drought)
-        expected = apply_argentina_drought(
-            (
-                flow
-                for monthly in self.baseline.monthly_results
-                for flow in monthly.market_flows
-            ),
-            config=self.drought_config,
+        if isinstance(self.drought_config, CrusherParameterShockConfig):
+            if (
+                self.baseline_crusher_configs is None
+                or self.modified_crusher_configs is None
+            ):
+                raise ValueError("Crusher comparison requires both configuration maps")
+            if (
+                apply_crusher_parameter_shock(
+                    self.baseline_crusher_configs, config=self.drought_config
+                )
+                != self.modified_crusher_configs
+            ):
+                raise ValueError(
+                    "Crusher configurations do not match the selected experiment"
+                )
+        elif (
+            self.baseline_crusher_configs is not None
+            or self.modified_crusher_configs is not None
+        ):
+            raise ValueError("Crusher metadata is only valid for Crusher experiments")
+        flows = (
+            flow
+            for monthly in self.baseline.monthly_results
+            for flow in monthly.market_flows
+        )
+        expected = (
+            tuple(
+                sorted(
+                    flows, key=lambda f: (f.month, f.region, f.commodity, f.flow_type)
+                )
+            )
+            if isinstance(self.drought_config, CrusherParameterShockConfig)
+            else apply_consumption_shock(flows, config=self.drought_config)
+            if isinstance(self.drought_config, ConsumptionShockConfig)
+            else apply_production_shock(flows, config=self.drought_config)
+            if isinstance(self.drought_config, ProductionShockConfig)
+            else apply_argentina_drought(flows, config=self.drought_config)
         )
         actual = tuple(
             sorted(
@@ -105,11 +172,51 @@ class ScenarioComparison(BaseModel):
                 ),
             )
         )
-        if expected != actual:
-            raise ValueError(
-                "drought history flows do not match the configured "
+        if len(expected) != len(actual) or any(
+            (left.month, left.region, left.commodity, left.flow_type)
+            != (right.month, right.region, right.commodity, right.flow_type)
+            or (
+                left.quantity_tonnes != right.quantity_tonnes
+                and not (
+                    isinstance(self.drought_config, ProductionShockConfig)
+                    and left.region == self.drought_config.region
+                    and (
+                        (
+                            isinstance(self.drought_config, ConsumptionShockConfig)
+                            and left.commodity == self.drought_config.commodity
+                            and left.flow_type == MarketFlowType.CONSUMPTION
+                        )
+                        or (
+                            not isinstance(self.drought_config, ConsumptionShockConfig)
+                            and left.commodity == Commodity.SOYBEANS
+                            and left.flow_type == MarketFlowType.SUPPLY
+                        )
+                    )
+                    and (
+                        self.drought_config.start_month is None
+                        or left.month >= self.drought_config.start_month
+                    )
+                    and (
+                        self.drought_config.end_month is None
+                        or left.month <= self.drought_config.end_month
+                    )
+                    and math.isclose(
+                        left.quantity_tonnes,
+                        right.quantity_tonnes,
+                        rel_tol=1e-12,
+                        abs_tol=1e-9,
+                    )
+                )
+            )
+            for left, right in zip(expected, actual, strict=False)
+        ):
+            message = (
+                "modified scenario flows do not match the configured production shock"
+                if isinstance(self.drought_config, ProductionShockConfig)
+                else "drought history flows do not match the configured "
                 "Argentina supply reduction"
             )
+            raise ValueError(message)
         if tuple(
             month.external_trade_flows for month in self.baseline.monthly_results
         ) != (
@@ -144,7 +251,10 @@ def compare_simulation_results(
     baseline: SimulationResult,
     drought: SimulationResult,
     *,
-    drought_config: ArgentinaDroughtConfig,
+    drought_config: ArgentinaDroughtConfig
+    | ConsumptionShockConfig
+    | ProductionShockConfig
+    | CrusherParameterShockConfig,
 ) -> ScenarioComparison:
     """Validate recorded paired runs before comparing observations or executions.
 
@@ -168,7 +278,10 @@ def run_argentina_drought_comparison(
     initial_state: MarketState,
     baseline_flows: Iterable[MarketFlow],
     *,
-    drought_config: ArgentinaDroughtConfig,
+    drought_config: ArgentinaDroughtConfig
+    | ConsumptionShockConfig
+    | ProductionShockConfig
+    | CrusherParameterShockConfig,
     months: int,
     agent_factory: Callable[[], Iterable[Agent]],
     crusher_configs: Mapping[str, CrusherConfig],
@@ -208,13 +321,51 @@ def run_argentina_drought_comparison(
         raise ScenarioError(
             "scenario flows and regional prices must be iterable"
         ) from exc
-    adjusted = apply_argentina_drought(flows, config=drought_config)
+    adjusted = (
+        flows
+        if isinstance(drought_config, CrusherParameterShockConfig)
+        else apply_consumption_shock(flows, config=drought_config)
+        if isinstance(drought_config, ConsumptionShockConfig)
+        else apply_production_shock(flows, config=drought_config)
+        if isinstance(drought_config, ProductionShockConfig)
+        else apply_argentina_drought(flows, config=drought_config)
+    )
     if not isinstance(price_dynamics_config, PriceDynamicsConfig):
         raise ScenarioError("price_dynamics_config must be a PriceDynamicsConfig")
     if not callable(agent_factory):
         raise ScenarioError("agent_factory must be callable")
     baseline_agents, drought_agents = _fresh_agents(agent_factory)
     configs = dict(crusher_configs)
+    modified_configs = dict(configs)
+    original_regions = modified_regions = None
+    if isinstance(drought_config, CrusherParameterShockConfig):
+        original_regions = {
+            agent.identity.region: agent.config
+            for agent in baseline_agents
+            if isinstance(agent, Crusher)
+        }
+        if len(original_regions) != sum(
+            isinstance(agent, Crusher) for agent in baseline_agents
+        ):
+            raise ScenarioError(
+                "Crusher experiments require one concrete Crusher per region"
+            )
+        modified_regions = apply_crusher_parameter_shock(
+            original_regions, config=drought_config
+        )
+        drought_agents = tuple(
+            replace(agent, config=modified_regions[agent.identity.region])
+            if isinstance(agent, Crusher)
+            else agent
+            for agent in drought_agents
+        )
+        modified_configs.update(
+            {
+                agent.identity.agent_id: agent.config
+                for agent in drought_agents
+                if isinstance(agent, Crusher)
+            }
+        )
     baseline = run_simulation(
         initial_state,
         baseline_agents,
@@ -230,14 +381,56 @@ def run_argentina_drought_comparison(
         initial_state,
         drought_agents,
         months=months,
-        crusher_configs=configs,
+        crusher_configs=modified_configs,
         monthly_flows=adjusted,
         regional_prices=prices,
         price_dynamics_config=price_dynamics_config,
         external_trade_flows=external,
         demand_aware_consumption=demand_aware_consumption,
     )
+    if isinstance(drought_config, CrusherParameterShockConfig):
+        return ScenarioComparison(
+            baseline=baseline,
+            drought=drought,
+            drought_config=drought_config,
+            baseline_crusher_configs=original_regions,
+            modified_crusher_configs=modified_regions,
+        )
     return compare_simulation_results(baseline, drought, drought_config=drought_config)
+
+
+def run_production_shock_comparison(
+    initial_state: MarketState,
+    baseline_flows: Iterable[MarketFlow],
+    *,
+    shock_config: ProductionShockConfig
+    | ConsumptionShockConfig
+    | CrusherParameterShockConfig,
+    months: int,
+    agent_factory: Callable[[], Iterable[Agent]],
+    crusher_configs: Mapping[str, CrusherConfig],
+    price_dynamics_config: PriceDynamicsConfig,
+    regional_prices: Iterable[RegionalPrice] | None = None,
+    external_trade_flows: Iterable[ExternalTradeFlow] | None = None,
+    demand_aware_consumption: bool = False,
+) -> ScenarioComparison:
+    """Run paired simulations with the configured regional soybean supply shock."""
+    if not isinstance(
+        shock_config, (ProductionShockConfig, CrusherParameterShockConfig)
+    ):
+        raise ScenarioError("shock_config must be a ProductionShockConfig")
+    return run_argentina_drought_comparison(
+        initial_state,
+        baseline_flows,
+        drought_config=shock_config,
+        months=months,
+        agent_factory=agent_factory,
+        crusher_configs=crusher_configs,
+        price_dynamics_config=price_dynamics_config,
+        regional_prices=regional_prices,
+        external_trade_flows=external_trade_flows,
+        demand_aware_consumption=demand_aware_consumption,
+    )
 
 
 def _fresh_agents(
