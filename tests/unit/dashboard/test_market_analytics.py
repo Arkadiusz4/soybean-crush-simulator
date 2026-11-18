@@ -1,8 +1,10 @@
+import json
 from datetime import date
 from inspect import signature
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
+import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
@@ -95,9 +97,10 @@ def test_multi_region_chart_series(
     monkeypatch.setattr(analytics, "st", ui)
     regions = [Region.ARGENTINA, Region.BRAZIL]
     analytics._crushing_regions(demo, regions)
-    frame = ui.bar_chart.call_args.args[0]
-    assert list(frame.columns) == ["Argentina", "Brazil"]
-    assert frame["Argentina"].iloc[0] > 0 and frame["Brazil"].iloc[0] == 0
+    frame = ui.altair_chart.call_args.args[0].data
+    assert list(frame["Series"].unique()) == ["Argentina", "Brazil"]
+    assert frame.loc[frame["Series"] == "Argentina", "Value"].iloc[0] > 0
+    assert frame.loc[frame["Series"] == "Brazil", "Value"].iloc[0] == 0
     prices = {
         f"{analytics._label(region)} / Soybeans": analytics._indexed(
             analytics._price_series(demo, region, Commodity.SOYBEANS)
@@ -106,7 +109,9 @@ def test_multi_region_chart_series(
     }
     assert all(series[0][1] == 100 for series in prices.values())
     analytics._multi_chart("Prices", prices, "Index")
-    assert list(ui.line_chart.call_args.args[0].columns) == list(prices)
+    assert list(ui.altair_chart.call_args.args[0].data["Series"].unique()) == list(
+        prices
+    )
 
 
 def test_indexing_preserves_missing_values_and_zero_baseline() -> None:
@@ -234,6 +239,11 @@ def test_interactive_filters_reuse_unmodified_result(
     app.button[0].click().run(timeout=30)
     app.sidebar.radio[0].set_value("Market Analytics").run()
     assert not app.exception and len(app.main.multiselect) == 2
+    specifications = [
+        json.loads(chart.proto.spec) for chart in app.get("vega_lite_chart")
+    ]
+    assert [spec["height"] for spec in specifications] == [400, 320, 350, 320]
+    assert all(spec["autosize"]["type"] == "fit-x" for spec in specifications)
     assert len(app.main.multiselect[1].value) == 3
     assert {item.value for item in app.subheader} >= {
         "Regional Price Trends",
@@ -268,4 +278,76 @@ def test_interactive_filters_reuse_unmodified_result(
     app.sidebar.radio[0].set_value("Overview").run()
     assert app.metric[0].value == "960"
     load.assert_called_once()
+    assert demo.model_dump_json() == before
+
+
+def test_chart_months_gaps_and_legend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep zeros and gaps while formatting months across calendar years."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    months = [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)]
+    frame = pd.DataFrame({"EU / Soybean Meal": [0.0, None, 20.0]}, index=months)
+    frame.index.name = "Month"
+    before = frame.copy(deep=True)
+    analytics._chart(frame, "Ending inventory (t)")
+    chart = ui.altair_chart.call_args.args[0]
+    spec = chart.to_dict()
+    assert spec["encoding"]["x"]["axis"]["format"] == "%b %Y"
+    assert spec["encoding"]["color"]["legend"]["orient"] == "bottom"
+    assert spec["mark"]["invalid"] == "break-paths-show-domains"
+    assert chart.data["Month"].tolist() == months
+    assert chart.data["Value"].iloc[0] == 0
+    assert pd.isna(chart.data["Value"].iloc[1])
+    pd.testing.assert_frame_equal(frame, before)
+
+
+@pytest.mark.parametrize(
+    "region_count,commodity_count", [(1, 3), (2, 1), (4, 1), (4, 3)]
+)
+@pytest.mark.parametrize("indexed", [False, True])
+def test_price_plot_layout_preserves_selected_series(
+    monkeypatch: pytest.MonkeyPatch,
+    demo: SimulationResult,
+    region_count: int,
+    commodity_count: int,
+    indexed: bool,
+) -> None:
+    """Keep plot height independent of legend size in both price display modes."""
+    ui = MagicMock()
+    monkeypatch.setattr(analytics, "st", ui)
+    before = demo.model_dump_json()
+    series = {
+        f"{region.value} / {commodity.value}": analytics._price_series(
+            demo, region, commodity
+        )
+        for region in list(Region)[:region_count]
+        for commodity in list(Commodity)[:commodity_count]
+    }
+    if indexed:
+        series = {label: analytics._indexed(values) for label, values in series.items()}
+    unit = (
+        "Price index (first observation = 100)" if indexed else "Observed price (USD/t)"
+    )
+    analytics._multi_chart("Prices", series, unit)
+    chart = ui.altair_chart.call_args.args[0]
+    spec = chart.to_dict()
+    assert spec["height"] == 400
+    assert spec["autosize"] == {"type": "fit-x", "contains": "padding"}
+    assert "width" not in spec
+    legend = spec["encoding"]["color"]["legend"]
+    assert legend["columns"] == 2 and legend["direction"] == "horizontal"
+    assert legend["orient"] == "bottom"
+    assert spec["encoding"]["y"]["title"] == unit
+    assert {item["field"] for item in spec["encoding"]["tooltip"]} >= {
+        "Series",
+        "Value",
+    }
+    assert ui.altair_chart.call_args.kwargs == {"width": "stretch", "height": "content"}
+    assert list(chart.data["Series"].unique()) == list(series)
+    for label, values in series.items():
+        observed = chart.data.loc[chart.data["Series"] == label]
+        assert observed["Month"].tolist() == [month for month, _ in values]
+        assert observed["Value"].tolist() == [value for _, value in values]
+        if indexed:
+            assert observed["Value"].iloc[0] == 100
     assert demo.model_dump_json() == before

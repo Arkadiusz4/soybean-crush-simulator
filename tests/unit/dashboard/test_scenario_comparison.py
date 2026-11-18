@@ -209,6 +209,37 @@ def test_empty_activity_and_zero_inventory(
     assert ui.altair_chart.call_args.args[0].data["Value"].tolist() == [0.0, 0.0]
 
 
+def test_comparison_plot_heights(
+    monkeypatch: pytest.MonkeyPatch, comparison: ScenarioComparison
+) -> None:
+    """Reserve each plot's height while keeping both scenario series intact."""
+    ui = MagicMock()
+    monkeypatch.setattr(view, "st", ui)
+    before = comparison.model_dump_json()
+    months = comparison.monthly_metrics()
+    markets = view._markets(months, Region.ARGENTINA, Commodity.SOYBEANS)
+    view._prices(markets)
+    view._crush_chart(view._crushing(months, Region.ARGENTINA))
+    view._inventories(markets)
+    calls = ui.altair_chart.call_args_list
+    assert [call.args[0].to_dict()["height"] for call in calls] == [400, 320, 350]
+    for call, unit in zip(
+        calls,
+        ["Observed price (USD/t)", "Soybean crushing (t)", "Ending inventory (t)"],
+        strict=True,
+    ):
+        chart = call.args[0]
+        spec = chart.to_dict()
+        assert spec["autosize"] == {"type": "fit-x", "contains": "padding"}
+        assert spec["encoding"]["color"]["legend"]["columns"] == 2
+        assert spec["encoding"]["color"]["legend"]["direction"] == "horizontal"
+        assert spec["encoding"]["y"]["title"] == unit
+        assert set(chart.data["Scenario"]) == {"Baseline", "Modified Scenario"}
+        assert len(chart.data) == len(markets) * 2
+        assert call.kwargs == {"width": "stretch", "height": "content"}
+    assert comparison.model_dump_json() == before
+
+
 def test_trade_directions(comparison: ScenarioComparison) -> None:
     """Regional comparisons distinguish the seller's export and buyer's import."""
     months = comparison.monthly_metrics()

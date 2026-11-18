@@ -147,6 +147,9 @@ def test_executed_metrics_and_regional_stocks(monkeypatch: pytest.MonkeyPatch) -
         ("Soybean Meal (t)", "20"),
         ("Soybean Oil (t)", "5"),
     ]
+    assert ui.metric.call_args_list[0].kwargs["help"] == "Exact: 25.00 t"
+    assert ui.metric.call_args_list[1].kwargs["help"] == "Exact: 7.00 t"
+    assert ui.metric.call_args_list[4].kwargs["help"] == "Exact: 10.00 t"
     assert "2025-01 to 2025-01" in ui.write.call_args.args[0]
     assert "3 regions" in ui.write.call_args.args[0]
     assert "Fixture source" in ui.caption.call_args_list[0].args[0]
