@@ -219,3 +219,43 @@ def test_optional_real_historical_preflight(historical_script: ModuleType) -> No
         {f"crusher-{region.value}": config for region, config in crushers.items()},
     )
     assert prepared.model_dump_json() == original
+
+
+def test_historical_drought_single_run(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Run one calibrated shock with the original state and partial flows."""
+    from soybean_sim.scenarios import _historical_market
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    original = prepared.model_dump_json()
+    run = _historical_market.run_simulation
+    calls = []
+
+    def recording_run(*args, **kwargs):
+        calls.append(kwargs)
+        return run(*args, **kwargs)
+
+    monkeypatch.setattr(_historical_market, "run_simulation", recording_run)
+    result = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ArgentinaDroughtConfig(
+            production_reduction_fraction=0.3,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 3, 1),
+        ),
+    )
+    assert len(calls) == 1 and calls[0]["demand_aware_consumption"] is True
+    assert result.initial_state == prepared.state and len(result.monthly_results) == 12
+    for month in result.monthly_results:
+        baseline = tuple(flow for flow in prepared.flows if flow.month == month.month)
+        assert (set(month.market_flows) != set(baseline)) == (
+            month.month == date(2025, 3, 1)
+        )
+    assert prepared.model_dump_json() == original

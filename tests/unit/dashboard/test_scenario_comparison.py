@@ -273,18 +273,20 @@ def test_app_filters_reuse_results(
     monkeypatch: pytest.MonkeyPatch, comparison: ScenarioComparison
 ) -> None:
     """Filtering and navigation retain demo results without another simulation."""
-    loader = Mock(wraps=data.load_demo_comparison)
-    monkeypatch.setattr(data, "load_demo_comparison", loader)
+    loader = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", loader)
     before = comparison.model_dump_json()
     app = AppTest.from_file(
         Path(__file__).resolve().parents[3] / "dashboard/app.py"
     ).run()
     app.sidebar.radio[0].set_value("Scenario Comparison").run()
     assert any("sidebar" in item.value for item in app.info)
+    app.sidebar.selectbox[1].select("Argentina Drought").run()
+    app.sidebar.selectbox[2].select("Compare with Baseline").run()
     app.button[0].click().run(timeout=30)
-    assert not app.exception and len(app.selectbox) == 2
-    assert app.selectbox[0].value == Region.ARGENTINA
-    assert app.selectbox[1].value == Commodity.SOYBEANS
+    assert not app.exception and len(app.main.selectbox) == 2
+    assert app.main.selectbox[0].value == Region.ARGENTINA
+    assert app.main.selectbox[1].value == Commodity.SOYBEANS
     assert all(
         "\N{EM DASH}" not in item.value
         for items in (app.caption, app.info, app.success, app.header, app.subheader)
@@ -297,16 +299,16 @@ def test_app_filters_reuse_results(
         "Trade Impact",
         "Price Impact",
     ]
-    app.selectbox[1].select(Commodity.SOYBEAN_OIL).run()
-    app.selectbox[0].select(Region.BRAZIL).run()
+    app.main.selectbox[1].select(Commodity.SOYBEAN_OIL).run()
+    app.main.selectbox[0].select(Region.BRAZIL).run()
     assert not app.exception
     assert any("No soybean crushing" in item.value for item in app.info)
-    app.selectbox[0].select(Region.EUROPEAN_UNION).run()
-    app.selectbox[1].select(Commodity.SOYBEAN_MEAL).run()
+    app.main.selectbox[0].select(Region.EUROPEAN_UNION).run()
+    app.main.selectbox[1].select(Commodity.SOYBEAN_MEAL).run()
     assert not app.exception
     assert any("No trades" in item.value for item in app.info)
     app.sidebar.radio[0].set_value("Overview").run()
     app.sidebar.radio[0].set_value("Scenario Comparison").run()
     assert not app.exception
-    loader.assert_called_once_with()
+    loader.assert_called_once()
     assert comparison.model_dump_json() == before

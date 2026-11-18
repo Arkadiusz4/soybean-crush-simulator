@@ -25,6 +25,13 @@ from soybean_sim.models import (
 from soybean_sim.simulation import MonthlyResult, SimulationResult
 
 
+def test_compact_quantities() -> None:
+    """Format large values concisely without changing the calculation inputs."""
+    assert overview._compact(142_065_966.67) == "142.07M"
+    assert overview._compact(183_500) == "183.5K"
+    assert overview._compact(575) == "575"
+
+
 def sample_result(*, missing_soybeans: bool = False) -> SimulationResult:
     """Build a small synthetic partial crush and one physical transfer."""
     month = date(2025, 1, 1)
@@ -117,7 +124,7 @@ def test_empty_state_and_public_signature(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(overview, "st", ui)
     overview.render(None)
     ui.header.assert_called_once_with("Market Overview")
-    assert "Load demo results" in ui.info.call_args.args[0]
+    assert "Run Simulation" in ui.info.call_args.args[0]
     ui.columns.assert_not_called()
     ui.dataframe.assert_not_called()
 
@@ -132,13 +139,13 @@ def test_executed_metrics_and_regional_stocks(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(overview, "st", ui)
     overview.render(result)
     assert [call.args for call in ui.metric.call_args_list] == [
-        ("Executed crushing (t)", "25.00"),
-        ("Interregional trade (t)", "7.00"),
+        ("Executed crushing (t)", "25"),
+        ("Interregional trade (t)", "7"),
         ("Executed trades", "1"),
         ("Simulated months", "1"),
-        ("Soybeans (t)", "10.00"),
-        ("Soybean Meal (t)", "20.00"),
-        ("Soybean Oil (t)", "5.00"),
+        ("Soybeans (t)", "10"),
+        ("Soybean Meal (t)", "20"),
+        ("Soybean Oil (t)", "5"),
     ]
     assert "2025-01 to 2025-01" in ui.write.call_args.args[0]
     assert "3 regions" in ui.write.call_args.args[0]
@@ -183,19 +190,19 @@ def test_shared_demo_in_app_and_navigation() -> None:
     app.button[0].click().run(timeout=30)
     assert not app.exception
     assert [item.value for item in app.metric] == [
-        "960.00",
-        "575.00",
+        "960",
+        "575",
         "12",
         "12",
-        "7,840.00",
-        "4,048.00",
-        "3,952.00",
+        "7.84K",
+        "4.05K",
+        "3.95K",
     ]
     assert app.dataframe[0].value.shape[0] == 4
-    app.radio[0].set_value("Market Analytics").run()
+    app.sidebar.radio[0].set_value("Market Analytics").run()
     assert not app.exception
-    app.radio[0].set_value("Scenario Comparison").run()
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
     assert not app.exception
-    app.radio[0].set_value("Overview").run()
-    assert not app.exception and app.metric[0].value == "960.00"
+    app.sidebar.radio[0].set_value("Overview").run()
+    assert not app.exception and app.metric[0].value == "960"
     assert original == load_demo_baseline()
