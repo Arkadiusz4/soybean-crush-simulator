@@ -59,8 +59,8 @@ def test_load_and_navigation_reuse_one_result(monkeypatch: pytest.MonkeyPatch) -
     load.assert_not_called()
     assert app.sidebar.radio[0].value == "Overview"
     assert any("No results loaded" in item.value for item in app.sidebar.caption)
-    app.sidebar.selectbox[1].select("Argentina Drought").run()
-    app.sidebar.selectbox[2].select("Compare with Baseline").run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
     app.button[0].click().run(timeout=30)
     assert not app.exception
     assert any("Last completed run" in item.value for item in app.sidebar.caption)
@@ -68,7 +68,7 @@ def test_load_and_navigation_reuse_one_result(monkeypatch: pytest.MonkeyPatch) -
     app.sidebar.radio[0].set_value("Market Analytics").run()
     assert any("Simulation results loaded" in item.value for item in app.success)
     app.sidebar.radio[0].set_value("Scenario Comparison").run()
-    assert any("drought results loaded" in item.value for item in app.success)
+    assert any("modified scenario results loaded" in item.value for item in app.success)
     load.assert_called_once()
 
 
@@ -99,13 +99,13 @@ def test_load_failure_can_be_retried(
     logged.assert_called_once_with("Simulation execution failed")
     app.sidebar.radio[0].set_value("Scenario Comparison").run()
     assert any("Run Simulation" in item.value for item in app.info)
-    app.sidebar.selectbox[1].select("Argentina Drought").run()
-    app.sidebar.selectbox[2].select("Compare with Baseline").run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
     app.button[0].click().run(timeout=30)
     assert not app.exception
-    assert any("drought results loaded" in item.value for item in app.success)
+    assert any("modified scenario results loaded" in item.value for item in app.success)
     assert load.call_count == 2
     app.button[0].click().run()
-    assert any("drought results loaded" in item.value for item in app.success)
+    assert any("modified scenario results loaded" in item.value for item in app.success)
     assert any("Simulation failed" in item.value for item in app.error)
     assert logged.call_count == 2

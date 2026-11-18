@@ -221,6 +221,38 @@ def test_optional_real_historical_preflight(historical_script: ModuleType) -> No
     assert prepared.model_dump_json() == original
 
 
+def test_historical_regional_production_shock(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType
+) -> None:
+    """Apply a Brazil supply increase through the calibrated historical engine."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    result = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        production_shock=ProductionShockConfig(
+            region=Region.BRAZIL,
+            percentage_change=20,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 3, 1),
+        ),
+    )
+    march = result.monthly_results[2]
+    flow = next(
+        item
+        for item in march.market_flows
+        if item.region == Region.BRAZIL
+        and item.commodity == Commodity.SOYBEANS
+        and item.flow_type == MarketFlowType.SUPPLY
+    )
+    assert flow.quantity_tonnes == pytest.approx(120)
+    assert result.initial_state == prepared.state
+
+
 def test_historical_drought_single_run(
     historical_paths: tuple[Path, Path],
     historical_script: ModuleType,
@@ -259,3 +291,78 @@ def test_historical_drought_single_run(
             month.month == date(2025, 3, 1)
         )
     assert prepared.model_dump_json() == original
+
+
+def test_historical_regional_shock_comparison(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+) -> None:
+    """Keep calibrated demand-aware settlement when comparing a regional increase."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    before = prepared.model_dump_json()
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=ProductionShockConfig(
+            region=Region.BRAZIL, percentage_change=20
+        ),
+    )
+    assert (
+        comparison.baseline.initial_state
+        == comparison.drought.initial_state
+        == prepared.state
+    )
+    assert all(
+        month.consumption_results is not None
+        for month in comparison.drought.monthly_results
+    )
+    assert len(comparison.monthly_metrics()) == 12
+    assert prepared.model_dump_json() == before
+
+
+@pytest.mark.parametrize("change", [-50, 50])
+def test_historical_brazil_shock_records_real_flows(
+    historical_paths: tuple[Path, Path], historical_script: ModuleType, change: int
+) -> None:
+    """Run calibrated baseline and shock while preserving all unrelated inputs."""
+    from soybean_sim.scenarios import ProductionShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    args = dict(
+        crusher_configs=crushers, trader_configs=traders, price_dynamics_config=pricing
+    )
+    baseline = run_historical_market(prepared, **args)
+    modified = run_historical_market(
+        prepared,
+        **args,
+        production_shock=ProductionShockConfig(
+            region=Region.BRAZIL,
+            percentage_change=change,
+            start_month=date(2025, 3, 1),
+            end_month=date(2025, 5, 1),
+        ),
+    )
+    assert baseline.initial_state == modified.initial_state == prepared.state
+    for before, after in zip(
+        baseline.monthly_results, modified.monthly_results, strict=True
+    ):
+        for original, changed in zip(
+            before.market_flows, after.market_flows, strict=True
+        ):
+            eligible = (
+                original.region == Region.BRAZIL
+                and original.commodity == Commodity.SOYBEANS
+                and original.flow_type == MarketFlowType.SUPPLY
+                and date(2025, 3, 1) <= original.month <= date(2025, 5, 1)
+            )
+            assert changed.quantity_tonnes == pytest.approx(
+                original.quantity_tonnes * (1 + change / 100)
+                if eligible
+                else original.quantity_tonnes
+            )

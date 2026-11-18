@@ -41,7 +41,7 @@ def test_synthetic_modes_and_reduction() -> None:
     assert baseline.comparison is None
     assert zero.comparison is not None and severe.comparison is not None
     assert zero.baseline == zero.comparison.drought == baseline.baseline
-    assert severe.comparison.drought_config.production_reduction_fraction == 0.6
+    assert severe.comparison.drought_config.percentage_change == -60
     assert severe.baseline is severe.comparison.baseline
     assert severe.comparison.drought != severe.baseline
 
@@ -59,9 +59,9 @@ def test_controls_are_explicit_and_preserve_last_result(
     app.button[0].click().run(timeout=30)
     assert not app.exception
     assert execute.call_count == 1
-    app.sidebar.selectbox[1].select("Argentina Drought").run()
-    app.sidebar.selectbox[2].select("Compare with Baseline").run()
-    app.slider[0].set_value(60).run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
+    app.slider[0].set_value(-60).run()
     assert execute.call_count == 1
     assert any("not been run" in item.value for item in app.caption)
     execute.side_effect = ValueError("failed")
@@ -266,12 +266,211 @@ def test_historical_year_controls_keep_last_result(
     app.sidebar.selectbox[0].select("Historical USDA/World Bank").run()
     assert app.sidebar.selectbox[1].value == 2025
     app.sidebar.selectbox[1].select(2024).run()
-    app.sidebar.selectbox[2].select("Argentina Drought").run()
-    assert app.sidebar.selectbox[4].value.year == 2024
+    app.sidebar.selectbox[2].select("Production Shock").run()
     assert app.sidebar.selectbox[5].value.year == 2024
+    assert app.sidebar.selectbox[6].value.year == 2024
     assert execute.call_count == 1
     assert any("not been run" in item.value for item in app.caption)
     execute.side_effect = ValueError("unavailable year")
     app.button[0].click().run()
     assert any("unavailable year" in item.value for item in app.error)
     assert app.session_state["dashboard_result"].config.year == 2025
+
+
+def test_regional_shock_controls_run_only_on_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keep Brazil shocks single-run and retain the selected change in metadata."""
+    from soybean_sim.models import Region
+
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[2].select(Region.BRAZIL).run()
+    app.slider[0].set_value(20).run()
+    execute.assert_not_called()
+    assert app.sidebar.selectbox[3].options == [
+        "Single Simulation",
+        "Compare with Baseline",
+    ]
+    app.button[0].click().run(timeout=30)
+    assert not app.exception
+    assert app.session_state["dashboard_result"].config.shock_region == Region.BRAZIL
+    assert app.session_state["dashboard_result"].config.shock_percent == 20
+    execute.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("region", "change"),
+    [
+        (data.Region.ARGENTINA, -30),
+        (data.Region.BRAZIL, -20),
+        (data.Region.UNITED_STATES, 45),
+        (data.Region.EUROPEAN_UNION, 20),
+        (data.Region.BRAZIL, 0),
+    ],
+)
+def test_regional_comparison_uses_real_engine(region: data.Region, change: int) -> None:
+    """Run both physical scenarios with shared initial state and selected flows."""
+    from datetime import date
+
+    config = data.RunConfig(
+        "Synthetic",
+        "Baseline vs Drought",
+        shock_region=region,
+        shock_percent=change,
+        drought_start=date(2025, 3, 1),
+        drought_end=date(2025, 3, 1),
+    )
+    result = data.run_dashboard_simulation(config)
+    assert result.comparison is not None
+    assert (
+        type(result.comparison).model_validate(result.comparison.model_dump())
+        == result.comparison
+    )
+    assert result.comparison.drought.initial_state == result.baseline.initial_state
+    assert result.comparison.drought_config.region == region
+    for base, modified in zip(
+        result.baseline.monthly_results,
+        result.comparison.drought.monthly_results,
+        strict=True,
+    ):
+        for left, right in zip(base.market_flows, modified.market_flows, strict=True):
+            targeted = (
+                left.region == region
+                and left.month == date(2025, 3, 1)
+                and left.commodity == data.Commodity.SOYBEANS
+                and left.flow_type.value == "supply"
+            )
+            assert right.quantity_tonnes == pytest.approx(
+                left.quantity_tonnes * (1 + change / 100)
+                if targeted
+                else left.quantity_tonnes
+            )
+    assert result == data.run_dashboard_simulation(config)
+
+
+def test_comparison_rejects_unrelated_flow_change() -> None:
+    """Reject modified non-target input flows even when the shock itself is valid."""
+    from pydantic import ValidationError
+
+    result = data.run_dashboard_simulation(
+        data.RunConfig(
+            "Synthetic",
+            "Baseline vs Drought",
+            shock_region=data.Region.BRAZIL,
+            shock_percent=20,
+        )
+    )
+    comparison = result.comparison
+    assert comparison is not None
+    first = comparison.drought.monthly_results[0]
+    index = next(
+        i
+        for i, flow in enumerate(first.market_flows)
+        if flow.region != data.Region.BRAZIL
+    )
+    flows = list(first.market_flows)
+    flows[index] = flows[index].model_copy(
+        update={"quantity_tonnes": flows[index].quantity_tonnes + 1}
+    )
+    changed = first.model_copy(update={"market_flows": tuple(flows)})
+    history = comparison.drought.model_copy(
+        update={"monthly_results": (changed, *comparison.drought.monthly_results[1:])}
+    )
+    with pytest.raises(ValidationError, match="production shock"):
+        type(comparison)(
+            baseline=comparison.baseline,
+            drought=history,
+            drought_config=comparison.drought_config,
+        )
+
+
+def test_regional_comparison_dashboard_labels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Show the selected regional shock and reuse it across dashboard navigation."""
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[2].select(data.Region.BRAZIL).run()
+    app.slider[0].set_value(-20).run()
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
+    execute.assert_not_called()
+    app.button[0].click().run(timeout=30)
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert not app.exception
+    assert any("Brazil soybean production" in item.value for item in app.caption)
+    assert any("Modified Scenario" in item.value for item in app.caption)
+    assert app.metric[0].value == "\N{MINUS SIGN}20.00%"
+    execute.assert_called_once()
+
+
+def test_shock_results_reach_views_and_slider_is_bounded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Route single and paired results to the appropriate views."""
+    from dashboard.components import market_analytics, overview, scenario_comparison
+    from soybean_sim.models import Region
+
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    show_overview, show_market, show_comparison = Mock(), Mock(), Mock()
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    monkeypatch.setattr(overview, "render", show_overview)
+    monkeypatch.setattr(market_analytics, "render", show_market)
+    monkeypatch.setattr(scenario_comparison, "render", show_comparison)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.sidebar.selectbox[2].select(Region.BRAZIL).run()
+    assert (app.slider[0].min, app.slider[0].max, app.slider[0].step) == (-100, 100, 5)
+    app.slider[0].set_value(-50).run()
+    execute.assert_not_called()
+    app.button[0].click().run(timeout=30)
+    single = app.session_state["dashboard_result"]
+    assert (
+        single.config.shock_percent == -50
+        and single.config.shock_region == Region.BRAZIL
+    )
+    assert show_overview.call_args.args[0] is single.baseline
+    app.sidebar.radio[0].set_value("Market Analytics").run()
+    assert show_market.call_args.args[0] is single.baseline
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
+    assert execute.call_count == 1
+    app.button[0].click().run(timeout=30)
+    paired = app.session_state["dashboard_result"]
+    assert paired is not single and paired.comparison is not None
+    assert paired.baseline is paired.comparison.baseline
+    assert show_market.call_args.args[0] is paired.baseline
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert show_comparison.call_args.args[0] is paired.comparison
+    assert execute.call_count == 2
+    execute.side_effect = ValueError("expected failure")
+    app.button[0].click().run()
+    assert app.session_state["dashboard_result"] is paired
+    assert any("expected failure" in error.value for error in app.error)
+
+
+def test_stress_test_selection_is_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retain an extreme saved run and its independent control when switching modes."""
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Production Shock").run()
+    app.checkbox[0].check().run()
+    app.number_input[0].set_value(150.0).run()
+    app.button[0].click().run(timeout=30)
+    assert app.session_state["dashboard_result"].config.shock_percent == 150
+    app.checkbox[0].uncheck().run()
+    assert app.session_state["dashboard_result"].config.shock_percent == 150
+    assert any("stress-test value" in caption.value for caption in app.caption)
+    app.checkbox[0].check().run()
+    assert app.number_input[0].value == 150
+    execute.assert_called_once()
