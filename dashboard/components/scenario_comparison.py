@@ -272,7 +272,8 @@ def render(comparison: ScenarioComparison | None) -> None:
     st.header("Scenario Comparison")
     if comparison is None:
         st.info(
-            "Comparison results are not loaded. Use 'Load demo results' in the sidebar."
+            "Comparison results are not loaded. Use 'Run Simulation' "
+            "in the sidebar to load a comparison."
         )
         return
     try:
@@ -301,7 +302,7 @@ def render(comparison: ScenarioComparison | None) -> None:
         f"{config.production_reduction_fraction:.1%} · "
         f"Configured drought period: {period} (inclusive)"
     )
-    st.caption("The sidebar demo uses synthetic results; it is not a forecast.")
+    st.caption("Simulated results are not forecasts.")
     regions = sorted({region for region, _ in coverage})
     filter_columns = st.columns(2)
     with filter_columns[0]:

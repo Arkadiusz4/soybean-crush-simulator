@@ -11,6 +11,14 @@ from soybean_sim.models import Commodity, Region
 from soybean_sim.simulation import SimulationResult
 
 
+def _compact(value: float) -> str:
+    """Format large quantities compactly while keeping smaller values readable."""
+    for threshold, suffix in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if abs(value) >= threshold:
+            return f"{value / threshold:,.2f}".rstrip("0").rstrip(".") + suffix
+    return f"{value:,.2f}".rstrip("0").rstrip(".")
+
+
 def _activity(
     result: SimulationResult,
 ) -> tuple[
@@ -59,10 +67,12 @@ def render(result: SimulationResult | None) -> None:
     """
     st.header("Market Overview")
     if result is None:
-        st.info("No results are loaded. Use 'Load demo results' to get started.")
+        st.info(
+            "No results are loaded. Use 'Run Simulation' in the sidebar to get started."
+        )
         return
 
-    st.success("Simulation baseline loaded.")
+    st.success("Simulation results loaded.")
     months = result.monthly_results
     stocks = {
         (item.region, item.commodity): item.quantity_tonnes
@@ -102,15 +112,21 @@ def render(result: SimulationResult | None) -> None:
             "Simulated months",
         ),
         (
-            f"{total_crushing:,.2f}",
-            f"{total_trade:,.2f}",
+            _compact(total_crushing),
+            _compact(total_trade),
             f"{trade_count:,}",
             f"{len(months):,}",
         ),
         strict=True,
     ):
         with card.container(border=True):
-            st.metric(label, value)
+            exact = {
+                "Executed crushing (t)": total_crushing,
+                "Interregional trade (t)": total_trade,
+            }.get(label)
+            st.metric(
+                label, value, help=None if exact is None else f"Exact: {exact:,.2f} t"
+            )
 
     regional_rows = []
     for region, name in zip(regions, region_names, strict=True):
@@ -145,9 +161,14 @@ def render(result: SimulationResult | None) -> None:
     ):
         quantities = [stocks.get((region, commodity)) for region in regions]
         total = (
-            f"{math.fsum(value for value in quantities if value is not None):,.2f}"
+            _compact(math.fsum(value for value in quantities if value is not None))
             if quantities and all(value is not None for value in quantities)
             else "Unavailable"
         )
         with card.container(border=True):
-            st.metric(f"{commodity.value.replace('_', ' ').title()} (t)", total)
+            exact = math.fsum(value for value in quantities if value is not None)
+            st.metric(
+                f"{commodity.value.replace('_', ' ').title()} (t)",
+                total,
+                help=f"Exact: {exact:,.2f} t" if total != "Unavailable" else None,
+            )
