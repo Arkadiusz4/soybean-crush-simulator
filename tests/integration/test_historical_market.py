@@ -402,3 +402,45 @@ def test_historical_consumption_shock_records_unmet_demand(
         for item in records
     )
     assert comparison.monthly_metrics()[0].markets
+
+
+def test_historical_crusher_parameter_execution(
+    historical_paths: tuple[Path, Path],
+    historical_script: ModuleType,
+) -> None:
+    """Preserve calibrated yields and demand accounting in single and paired runs."""
+    from soybean_sim.scenarios import CrusherParameterShockConfig
+
+    prepared = load_historical_market(*historical_paths)
+    crushers, traders, pricing = historical_script.create_settings(prepared)
+    shock = CrusherParameterShockConfig(
+        region=Region.EUROPEAN_UNION, capacity_change_percent=25
+    )
+    comparison = compare_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        drought_config=shock,
+    )
+    single = run_historical_market(
+        prepared,
+        crusher_configs=crushers,
+        trader_configs=traders,
+        price_dynamics_config=pricing,
+        crusher_parameter_shock=shock,
+    )
+    assert single == comparison.drought
+    assert comparison.baseline.initial_state == single.initial_state == prepared.state
+    assert all(
+        a.market_flows == b.market_flows
+        for a, b in zip(
+            comparison.baseline.monthly_results, single.monthly_results, strict=True
+        )
+    )
+    assert all(
+        month.consumption_results is not None for month in single.monthly_results
+    )
+    assert comparison.modified_crusher_configs[
+        Region.EUROPEAN_UNION
+    ].monthly_capacity_tonnes == pytest.approx(12.5)

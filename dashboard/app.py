@@ -62,12 +62,60 @@ def main() -> None:
             year = 2025
             st.caption("Synthetic simulation period: 2025.")
         scenario = st.selectbox(
-            "Market Scenario", ("Baseline", "Production Shock", "Consumption Shock")
+            "Market Scenario",
+            (
+                "Baseline",
+                "Production Shock",
+                "Consumption Shock",
+                "Crusher Configuration",
+            ),
         )
         shock_region = Region.ARGENTINA
         shock_commodity = Commodity.SOYBEAN_MEAL
         change = -30
-        if scenario != "Baseline":
+        capacity_change = cost_change = 0
+        preview_error = False
+        if scenario == "Crusher Configuration" and year is not None:
+            try:
+                configurations = data.crusher_preview(source, year)
+                shock_region = st.selectbox(
+                    "Crusher region",
+                    sorted(configurations),
+                    format_func=lambda region: region.value.replace("_", " ").title(),
+                )
+                capacity_change = st.slider(
+                    "Crushing capacity change (%)",
+                    -95,
+                    100,
+                    0,
+                    step=5,
+                    help="Capacity must remain positive; -100% is unsupported.",
+                )
+                cost_change = st.slider(
+                    "Processing cost change (%)", -100, 100, 0, step=5
+                )
+                modified = data.apply_crusher_parameter_shock(
+                    configurations,
+                    config=data.CrusherParameterShockConfig(
+                        region=shock_region,
+                        capacity_change_percent=capacity_change,
+                        processing_cost_change_percent=cost_change,
+                    ),
+                )
+                before, after = configurations[shock_region], modified[shock_region]
+                st.caption("Configuration preview, not executed crushing:")
+                st.caption(
+                    f"Capacity: {before.monthly_capacity_tonnes:,.2f} to "
+                    f"{after.monthly_capacity_tonnes:,.2f} t/month"
+                )
+                st.caption(
+                    f"Processing cost: {before.processing_cost_usd_per_tonne:,.2f} to "
+                    f"{after.processing_cost_usd_per_tonne:,.2f} USD/t"
+                )
+            except (ValueError, OSError) as exc:
+                st.error(f"Could not prepare Crusher settings: {exc}")
+                preview_error = True
+        if scenario not in ("Baseline", "Crusher Configuration"):
             shock_region = st.selectbox(
                 "Consumption region"
                 if scenario == "Consumption Shock"
@@ -161,7 +209,10 @@ def main() -> None:
                 help="Limits the size of each monthly price update.",
             )
             start = end = None
-            if scenario != "Baseline" and year is not None:
+            if (
+                scenario not in ("Baseline", "Crusher Configuration")
+                and year is not None
+            ):
                 months = [date(year, month, 1) for month in range(1, 13)]
                 start = st.selectbox(
                     "Shock start month",
@@ -190,8 +241,12 @@ def main() -> None:
             float(change) if scenario != "Baseline" else None,
             scenario if scenario != "Baseline" else "Production Shock",
             shock_commodity,
+            capacity_change,
+            cost_change,
         )
-        if st.button("Run Simulation", type="primary", disabled=year is None):
+        if st.button(
+            "Run Simulation", type="primary", disabled=year is None or preview_error
+        ):
             try:
                 with st.spinner("Running simulation..."):
                     result = data.run_dashboard_simulation(requested)
@@ -207,7 +262,13 @@ def main() -> None:
             description = (
                 f"{config.source} · {config.scenario} · {config.output} · {config.year}"
             )
-            if config.scenario != "Baseline":
+            if config.scenario == "Crusher Configuration":
+                description += (
+                    f" · {config.shock_region.value} · "
+                    f"Capacity {config.capacity_change_percent:+g}%, "
+                    f"cost {config.cost_change_percent:+g}%"
+                )
+            elif config.scenario != "Baseline":
                 change_value = (
                     config.shock_percent
                     if config.shock_percent is not None
@@ -224,7 +285,7 @@ def main() -> None:
                 f"Price sensitivity: {config.price_sensitivity:g} · "
                 f"Monthly cap: {config.maximum_monthly_change:.1%}"
             )
-            if config.scenario != "Baseline":
+            if config.scenario not in ("Baseline", "Crusher Configuration"):
                 st.caption(
                     f"Shock period: {config.drought_start:%Y-%m} to "
                     f"{config.drought_end:%Y-%m} (inclusive)"

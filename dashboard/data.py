@@ -7,17 +7,19 @@ from inspect import signature
 from pathlib import Path
 
 from scripts.compare_scenarios import create_agents, create_demo, run_demo
-from soybean_sim.agents import TraderConfig
+from soybean_sim.agents import CrusherConfig, TraderConfig
 from soybean_sim.data.usda import load_usda_psd_csv
 from soybean_sim.data.world_bank import load_world_bank_prices
 from soybean_sim.market import PriceDynamicsConfig
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
     ConsumptionShockConfig,
+    CrusherParameterShockConfig,
     HistoricalMarketInputs,
     ProductionShockConfig,
     ScenarioComparison,
     apply_consumption_shock,
+    apply_crusher_parameter_shock,
     apply_production_shock,
     calibrate_historical_crushers,
     compare_historical_market,
@@ -63,6 +65,8 @@ class RunConfig:
     shock_percent: float | None = None
     shock_kind: str = "Production Shock"
     shock_commodity: Commodity = Commodity.SOYBEAN_MEAL
+    capacity_change_percent: float = 0.0
+    cost_change_percent: float = 0.0
 
     @property
     def scenario(self) -> str:
@@ -80,6 +84,8 @@ class RunConfig:
 
     def __post_init__(self) -> None:
         """Normalize inactive drought controls and full-period bounds."""
+        if self.mode == "Crusher Configuration":
+            object.__setattr__(self, "shock_kind", "Crusher Configuration")
         if self.mode == "Consumption Shock":
             object.__setattr__(self, "shock_kind", "Consumption Shock")
         if self.mode == "Baseline":
@@ -90,6 +96,8 @@ class RunConfig:
             object.__setattr__(self, "shock_percent", None)
             object.__setattr__(self, "shock_kind", "Production Shock")
             object.__setattr__(self, "shock_commodity", Commodity.SOYBEAN_MEAL)
+            object.__setattr__(self, "capacity_change_percent", 0.0)
+            object.__setattr__(self, "cost_change_percent", 0.0)
         else:
             object.__setattr__(
                 self, "drought_start", self.drought_start or date(self.year, 1, 1)
@@ -97,6 +105,13 @@ class RunConfig:
             object.__setattr__(
                 self, "drought_end", self.drought_end or date(self.year, 12, 1)
             )
+        if self.shock_kind == "Crusher Configuration" and self.mode != "Baseline":
+            object.__setattr__(self, "shock_percent", None)
+            object.__setattr__(self, "drought_start", None)
+            object.__setattr__(self, "drought_end", None)
+        else:
+            object.__setattr__(self, "capacity_change_percent", 0.0)
+            object.__setattr__(self, "cost_change_percent", 0.0)
 
 
 @dataclass(frozen=True)
@@ -188,9 +203,14 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         "Argentina Drought",
         "Production Shock",
         "Consumption Shock",
+        "Crusher Configuration",
     ):
         raise ValueError(f"Unsupported simulation mode: {config.mode}")
-    if config.shock_kind not in ("Production Shock", "Consumption Shock"):
+    if config.shock_kind not in (
+        "Production Shock",
+        "Consumption Shock",
+        "Crusher Configuration",
+    ):
         raise ValueError(f"Unsupported shock type: {config.shock_kind}")
     paired = config.mode == "Baseline vs Drought"
     shocked = config.mode != "Baseline"
@@ -198,7 +218,12 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         config.source == "Historical USDA/World Bank"
         and shocked
         and not paired
-        and "production_shock" not in signature(run_historical_market).parameters
+        and (
+            "crusher_parameter_shock"
+            if config.shock_kind == "Crusher Configuration"
+            else "production_shock"
+        )
+        not in signature(run_historical_market).parameters
     ):
         raise RuntimeError(
             "The historical runner is outdated. Stop and restart the Streamlit server "
@@ -220,7 +245,13 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         else -float(config.reduction_percent)
     )
     shock = (
-        ConsumptionShockConfig(
+        CrusherParameterShockConfig(
+            region=config.shock_region,
+            capacity_change_percent=config.capacity_change_percent,
+            processing_cost_change_percent=config.cost_change_percent,
+        )
+        if shocked and config.shock_kind == "Crusher Configuration"
+        else ConsumptionShockConfig(
             region=config.shock_region,
             commodity=config.shock_commodity,
             percentage_change=change,
@@ -237,12 +268,16 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         if shocked
         else None
     )
-    if shocked and (
-        shock is None
-        or shock.start_month is None
-        or shock.end_month is None
-        or shock.start_month.year != config.year
-        or shock.end_month.year != config.year
+    if (
+        shocked
+        and not isinstance(shock, CrusherParameterShockConfig)
+        and (
+            shock is None
+            or shock.start_month is None
+            or shock.end_month is None
+            or shock.start_month.year != config.year
+            or shock.end_month.year != config.year
+        )
     ):
         raise ValueError("Drought months must lie within the simulation year")
     if config.source == "Synthetic":
@@ -259,12 +294,21 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
                 price_dynamics_config=case.price_config,
             )
             return DashboardResult(config, comparison.baseline, comparison)
+        synthetic_config = (
+            apply_crusher_parameter_shock(
+                {Region.ARGENTINA: case.crusher_config}, config=shock
+            )[Region.ARGENTINA]
+            if isinstance(shock, CrusherParameterShockConfig)
+            else case.crusher_config
+        )
         baseline = run_simulation(
             case.state,
-            create_agents(case.crusher_config),
+            create_agents(synthetic_config),
             months=12,
-            crusher_configs={"crusher-ar": case.crusher_config},
-            monthly_flows=apply_consumption_shock(case.flows, config=shock)
+            crusher_configs={"crusher-ar": synthetic_config},
+            monthly_flows=case.flows
+            if isinstance(shock, CrusherParameterShockConfig)
+            else apply_consumption_shock(case.flows, config=shock)
             if isinstance(shock, ConsumptionShockConfig)
             else apply_production_shock(case.flows, config=shock)
             if shock is not None
@@ -301,7 +345,15 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
                 drought_config=shock,
             )
             return DashboardResult(config, comparison.baseline, comparison)
-        if shocked:
+        if isinstance(shock, CrusherParameterShockConfig):
+            baseline = run_historical_market(
+                prepared,
+                crusher_configs=crushers,
+                trader_configs=traders,
+                price_dynamics_config=pricing,
+                crusher_parameter_shock=shock,
+            )
+        elif shocked:
             baseline = run_historical_market(
                 prepared,
                 crusher_configs=crushers,
@@ -317,3 +369,12 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
                 price_dynamics_config=pricing,
             )
     return DashboardResult(config, baseline, None)
+
+
+def crusher_preview(source: str, year: int) -> dict[Region, CrusherConfig]:
+    """Prepare baseline settings for a preview without executing any simulation."""
+    if source == "Synthetic":
+        return {Region.ARGENTINA: create_demo().crusher_config}
+    return calibrate_historical_crushers(
+        _load_year(year), processing_cost_usd_per_tonne=35, calibrate_yields=True
+    )

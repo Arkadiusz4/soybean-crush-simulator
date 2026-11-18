@@ -33,6 +33,10 @@ from soybean_sim.models import Commodity, MarketSnapshot, Region
 from soybean_sim.simulation import SimulationError, SimulationResult, run_simulation
 
 from ._comparison import ScenarioComparison, run_argentina_drought_comparison
+from ._crusher_parameters import (
+    CrusherParameterShockConfig,
+    apply_crusher_parameter_shock,
+)
 from ._drought import (
     ArgentinaDroughtConfig,
     ConsumptionShockConfig,
@@ -503,6 +507,7 @@ def run_historical_market(
     price_dynamics_config: PriceDynamicsConfig,
     drought_config: ArgentinaDroughtConfig | None = None,
     production_shock: ProductionShockConfig | None = None,
+    crusher_parameter_shock: CrusherParameterShockConfig | None = None,
 ) -> SimulationResult:
     """Preflight the physical engine and return only complete histories.
 
@@ -513,6 +518,7 @@ def run_historical_market(
         price_dynamics_config (PriceDynamicsConfig): Regional pricing assumptions.
         drought_config (ArgentinaDroughtConfig | None): Optional soybean supply shock.
         production_shock (ProductionShockConfig | None): Regional supply change.
+        crusher_parameter_shock: Optional capacity and processing-cost experiment.
 
     Returns:
         SimulationResult: Complete run, or diagnostics retaining execution context.
@@ -531,11 +537,19 @@ def run_historical_market(
     crushers, traders, price_config = _validated_settings(
         crusher_configs, trader_configs, price_dynamics_config
     )
+    if crusher_parameter_shock is not None:
+        if drought_config is not None or production_shock is not None:
+            raise ValueError("Only one experiment is supported")
+        crushers = apply_crusher_parameter_shock(
+            crushers, config=crusher_parameter_shock
+        )
     progress = _Progress()
     agents = _observe_month(
         _create_agents(prepared, crusher_configs=crushers, trader_configs=traders),
         progress,
-        "production shock"
+        "crusher configuration"
+        if crusher_parameter_shock is not None
+        else "production shock"
         if production_shock is not None
         else "drought"
         if drought_config is not None
@@ -590,7 +604,8 @@ def compare_historical_market(
     price_dynamics_config: PriceDynamicsConfig,
     drought_config: ArgentinaDroughtConfig
     | ConsumptionShockConfig
-    | ProductionShockConfig,
+    | ProductionShockConfig
+    | CrusherParameterShockConfig,
 ) -> ScenarioComparison:
     """Attempt paired runs from identical historical starting conditions.
 

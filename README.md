@@ -98,6 +98,16 @@ Consumption shocks change requested consumption, not guaranteed fulfillment.
 Historical runs report unmet demand; runs without demand-aware accounting do not
 record fulfilled or unmet totals. A missing input flow remains missing.
 
+Crusher Configuration changes one region's capacity and processing cost relative
+to its baseline. Capacity must stay positive, so the regular capacity control
+starts at −95%; cost may fall to zero. The synthetic demo has only an Argentina
+Crusher. Historical runs expose all four calibrated regional Crushers.
+The preview shows configuration, not executed throughput. Capacity increases may
+have no effect when soybeans or profitability limit processing, and cost changes
+may stay within the same utilization band. Historical capacities are derived from
+USDA annual crush rather than measured plant capacity. Product and residual yields
+stay unchanged; additional output does not guarantee fulfillment of demand.
+
 The app supplies shared results to independent component modules:
 
 - Developer 1: `dashboard/components/overview.py`, with `render(result: SimulationResult | None)`.

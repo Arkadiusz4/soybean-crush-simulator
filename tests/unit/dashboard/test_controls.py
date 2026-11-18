@@ -544,3 +544,30 @@ def test_consumption_controls_and_comparison_labels(
         == Commodity.SOYBEAN_MEAL
     )
     execute.assert_called_once()
+
+
+def test_crusher_controls_preview_and_explicit_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preview existing regional settings without running the engine."""
+    execute = Mock(wraps=data.run_dashboard_simulation)
+    monkeypatch.setattr(data, "run_dashboard_simulation", execute)
+    app = AppTest.from_file(
+        Path(__file__).resolve().parents[3] / "dashboard/app.py"
+    ).run()
+    app.sidebar.selectbox[1].select("Crusher Configuration").run()
+    assert app.sidebar.selectbox[2].options == ["Argentina"]
+    app.slider[0].set_value(25).run()
+    app.slider[1].set_value(20).run()
+    execute.assert_not_called()
+    assert any("100.00 to 125.00" in item.value for item in app.caption)
+    app.sidebar.selectbox[3].select("Compare with Baseline").run()
+    app.button[0].click().run(timeout=30)
+    assert not app.exception and not app.error
+    result = app.session_state["dashboard_result"]
+    assert result.config.capacity_change_percent == 25
+    assert result.comparison is not None
+    app.sidebar.radio[0].set_value("Scenario Comparison").run()
+    assert not app.exception and not app.error
+    assert any("Processing cost" in item.value for item in app.caption)
+    execute.assert_called_once()
