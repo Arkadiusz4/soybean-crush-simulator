@@ -13,15 +13,16 @@ from soybean_sim.data.world_bank import load_world_bank_prices
 from soybean_sim.market import PriceDynamicsConfig
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
-    ArgentinaDroughtConfig,
     HistoricalMarketInputs,
+    ProductionShockConfig,
     ScenarioComparison,
-    apply_argentina_drought,
+    apply_production_shock,
     calibrate_historical_crushers,
     compare_historical_market,
     load_historical_market,
     prepare_historical_market,
     run_historical_market,
+    run_production_shock_comparison,
 )
 from soybean_sim.simulation import SimulationResult, run_simulation
 
@@ -50,17 +51,19 @@ class RunConfig:
 
     source: str
     mode: str
-    reduction_percent: int = 30
+    reduction_percent: float = 30
     price_sensitivity: float = PriceDynamicsConfig().price_sensitivity
     maximum_monthly_change: float = PriceDynamicsConfig().maximum_monthly_change
     drought_start: date | None = None
     drought_end: date | None = None
     year: int = 2025
+    shock_region: Region = Region.ARGENTINA
+    shock_percent: float | None = None
 
     @property
     def scenario(self) -> str:
         """Identify the configured market scenario."""
-        return "Baseline" if self.mode == "Baseline" else "Argentina Drought"
+        return "Baseline" if self.mode == "Baseline" else "Production Shock"
 
     @property
     def output(self) -> str:
@@ -77,6 +80,8 @@ class RunConfig:
             object.__setattr__(self, "reduction_percent", 30)
             object.__setattr__(self, "drought_start", None)
             object.__setattr__(self, "drought_end", None)
+            object.__setattr__(self, "shock_region", Region.ARGENTINA)
+            object.__setattr__(self, "shock_percent", None)
         else:
             object.__setattr__(
                 self, "drought_start", self.drought_start or date(self.year, 1, 1)
@@ -169,7 +174,12 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
     """Execute a supported configuration using existing calibrated runners."""
     if config.source not in ("Synthetic", "Historical USDA/World Bank"):
         raise ValueError(f"Unsupported data source: {config.source}")
-    if config.mode not in ("Baseline", "Baseline vs Drought", "Argentina Drought"):
+    if config.mode not in (
+        "Baseline",
+        "Baseline vs Drought",
+        "Argentina Drought",
+        "Production Shock",
+    ):
         raise ValueError(f"Unsupported simulation mode: {config.mode}")
     paired = config.mode == "Baseline vs Drought"
     shocked = config.mode != "Baseline"
@@ -177,7 +187,7 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         config.source == "Historical USDA/World Bank"
         and shocked
         and not paired
-        and "drought_config" not in signature(run_historical_market).parameters
+        and "production_shock" not in signature(run_historical_market).parameters
     ):
         raise RuntimeError(
             "The historical runner is outdated. Stop and restart the Streamlit server "
@@ -193,34 +203,50 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
         price_sensitivity=config.price_sensitivity,
         maximum_monthly_change=config.maximum_monthly_change,
     )
-    drought = (
-        ArgentinaDroughtConfig(
-            production_reduction_fraction=config.reduction_percent / 100,
+    change = (
+        config.shock_percent
+        if config.shock_percent is not None
+        else -float(config.reduction_percent)
+    )
+    shock = (
+        ProductionShockConfig(
+            region=config.shock_region,
+            percentage_change=change,
             start_month=config.drought_start,
             end_month=config.drought_end,
         )
         if shocked
-        else ArgentinaDroughtConfig()
+        else None
     )
     if shocked and (
-        drought.start_month is None
-        or drought.end_month is None
-        or drought.start_month.year != config.year
-        or drought.end_month.year != config.year
+        shock is None
+        or shock.start_month is None
+        or shock.end_month is None
+        or shock.start_month.year != config.year
+        or shock.end_month.year != config.year
     ):
         raise ValueError("Drought months must lie within the simulation year")
     if config.source == "Synthetic":
-        case = replace(create_demo(), drought_config=drought, price_config=pricing)
+        case = replace(create_demo(), price_config=pricing)
         if paired:
-            comparison = run_demo(case)
+            assert shock is not None
+            comparison = run_production_shock_comparison(
+                case.state,
+                case.flows,
+                shock_config=shock,
+                months=12,
+                agent_factory=lambda: create_agents(case.crusher_config),
+                crusher_configs={"crusher-ar": case.crusher_config},
+                price_dynamics_config=case.price_config,
+            )
             return DashboardResult(config, comparison.baseline, comparison)
         baseline = run_simulation(
             case.state,
             create_agents(case.crusher_config),
             months=12,
             crusher_configs={"crusher-ar": case.crusher_config},
-            monthly_flows=apply_argentina_drought(case.flows, config=drought)
-            if shocked
+            monthly_flows=apply_production_shock(case.flows, config=shock)
+            if shock is not None
             else case.flows,
             price_dynamics_config=case.price_config,
         )
@@ -245,12 +271,13 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
             for region in Region
         }
         if paired:
+            assert shock is not None
             comparison = compare_historical_market(
                 prepared,
                 crusher_configs=crushers,
                 trader_configs=traders,
                 price_dynamics_config=pricing,
-                drought_config=drought,
+                drought_config=shock,
             )
             return DashboardResult(config, comparison.baseline, comparison)
         if shocked:
@@ -259,7 +286,7 @@ def run_dashboard_simulation(config: RunConfig) -> DashboardResult:
                 crusher_configs=crushers,
                 trader_configs=traders,
                 price_dynamics_config=pricing,
-                drought_config=drought,
+                production_shock=shock,
             )
         else:
             baseline = run_historical_market(

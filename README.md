@@ -76,11 +76,15 @@ uv run streamlit run dashboard/app.py
 # or: just dashboard
 ```
 
-Choose synthetic or historical data, then select a baseline or Argentina drought
-scenario. Drought can run alone or be compared with a baseline, with a 0–100%
-reduction. Press
+Choose synthetic or historical data, then select a baseline or regional soybean
+production shock. Changes range from −100% to +1000%. Any supported region and
+change can also be compared with a baseline. Press
 **Run Simulation** to execute; changes to controls do not run automatically, and
 the last successful result remains available while navigating.
+
+The standard production slider covers −100% to +100% in 5% steps. Larger
+increases are available separately under stress testing. For paired runs,
+Overview and Market Analytics show the baseline; Scenario Comparison shows both.
 
 Historical mode requires `data/raw/psd_oilseeds.csv` and
 `data/raw/CMO-Historical-Data-Monthly.xlsx`. The dashboard checks available

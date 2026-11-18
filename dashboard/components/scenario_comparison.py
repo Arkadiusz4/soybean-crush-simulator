@@ -13,6 +13,7 @@ from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
     MetricComparison,
     MonthlyComparison,
+    ProductionShockConfig,
     RegionalMarketComparison,
     ScenarioComparison,
     ScenarioError,
@@ -29,14 +30,16 @@ def _sum_pairs(pairs: Iterable[MetricComparison]) -> MetricComparison:
     )
 
 
-def _production(result: SimulationResult) -> float | None:
-    """Sum recorded Argentina soybean supply, or return None if unrecorded."""
+def _production(
+    result: SimulationResult, region: Region = Region.ARGENTINA
+) -> float | None:
+    """Sum recorded regional soybean supply, or return None if unrecorded."""
     quantities = []
     for month in result.monthly_results:
         observations = [
             flow.quantity_tonnes
             for flow in month.market_flows
-            if flow.region == Region.ARGENTINA
+            if flow.region == region
             and flow.commodity == Commodity.SOYBEANS
             and flow.flow_type == MarketFlowType.SUPPLY
         ]
@@ -48,9 +51,14 @@ def _production(result: SimulationResult) -> float | None:
 
 def _production_comparison(comparison: ScenarioComparison) -> MetricComparison | None:
     """Compare recorded production without substituting missing flows with zero."""
+    region = (
+        comparison.drought_config.region
+        if isinstance(comparison.drought_config, ProductionShockConfig)
+        else Region.ARGENTINA
+    )
     baseline, drought = (
-        _production(comparison.baseline),
-        _production(comparison.drought),
+        _production(comparison.baseline, region),
+        _production(comparison.drought, region),
     )
     if baseline is None or drought is None:
         return None
@@ -112,7 +120,8 @@ def _percent(value: MetricComparison) -> str:
 def _pair_caption(value: MetricComparison, unit: str) -> str:
     """Describe a paired total and its signed drought-minus-baseline change."""
     return (
-        f"Baseline {value.baseline:,.2f} {unit} | Drought {value.drought:,.2f} {unit}"
+        f"Baseline {value.baseline:,.2f} {unit} | "
+        f"Modified Scenario {value.drought:,.2f} {unit}"
         f" | Difference {_change(value.difference, unit)}"
     )
 
@@ -125,7 +134,7 @@ def _card(label: str, value: str, pair: MetricComparison | None, unit: str) -> N
             st.caption("Recorded supply unavailable")
         else:
             st.caption(f"Baseline: {pair.baseline:,.2f} {unit}")
-            st.caption(f"Drought: {pair.drought:,.2f} {unit}")
+            st.caption(f"Modified Scenario: {pair.drought:,.2f} {unit}")
 
 
 def _drought_period(start: date | None, end: date | None) -> str:
@@ -150,7 +159,7 @@ def _chart(
     """Render paired monthly values on a chronological, clearly labeled axis."""
     frame = pd.DataFrame(
         [(month, item.baseline, item.drought) for month, item in values],
-        columns=["Month", "Baseline", "Drought"],
+        columns=["Month", "Baseline", "Modified Scenario"],
     ).melt(id_vars="Month", var_name="Scenario", value_name="Value")
     base = alt.Chart(frame).encode(
         x=alt.X(
@@ -199,7 +208,9 @@ def _line_chart(
 def _prices(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
     """Plot regional prices observed during, rather than after, each month."""
     values = [(month, market.price_usd_per_tonne) for month, market in markets]
-    _line_chart("Baseline vs Drought Price Trends", values, "Observed price (USD/t)")
+    _line_chart(
+        "Baseline vs Modified Scenario Price Trends", values, "Observed price (USD/t)"
+    )
     st.caption("Prices are observations during each simulated month.")
     st.caption(f"First: {_pair_caption(values[0][1], 'USD/t')}")
     st.caption(f"Last: {_pair_caption(values[-1][1], 'USD/t')}")
@@ -250,11 +261,11 @@ def _trade(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
         {
             "Month": month,
             "Baseline imports (t)": item.imports_tonnes.baseline,
-            "Drought imports (t)": item.imports_tonnes.drought,
+            "Modified imports (t)": item.imports_tonnes.drought,
             "Baseline exports (t)": item.exports_tonnes.baseline,
-            "Drought exports (t)": item.exports_tonnes.drought,
+            "Modified exports (t)": item.exports_tonnes.drought,
             "Baseline net (t)": item.net_trade_tonnes.baseline,
-            "Drought net (t)": item.net_trade_tonnes.drought,
+            "Modified net (t)": item.net_trade_tonnes.drought,
             "Net change": _change(item.net_trade_tonnes.difference, "t"),
         }
         for month, item in markets
@@ -292,15 +303,22 @@ def render(comparison: ScenarioComparison | None) -> None:
     if not months or not coverage:
         st.error("Comparison data has no complete regional market coverage.")
         return
-    st.success("Baseline and drought results loaded.")
-    st.subheader("Baseline vs Argentina Drought")
+    st.success("Baseline and modified scenario results loaded.")
+    st.subheader("Baseline vs Production Shock")
     config = comparison.drought_config
+    shock_region = (
+        config.region if isinstance(config, ProductionShockConfig) else Region.ARGENTINA
+    )
+    change = (
+        config.percentage_change
+        if isinstance(config, ProductionShockConfig)
+        else -100 * config.production_reduction_fraction
+    )
     period = _drought_period(config.start_month, config.end_month)
     st.caption(
         f"{months[0].month:%Y-%m} to {months[-1].month:%Y-%m} · "
-        f"{len(months)} months · Configured reduction: "
-        f"{config.production_reduction_fraction:.1%} · "
-        f"Configured drought period: {period} (inclusive)"
+        f"{len(months)} months · {_label(shock_region)} soybean production "
+        f"{_change(change, '%')} · Shock period: {period} (inclusive)"
     )
     st.caption("Simulated results are not forecasts.")
     regions = sorted({region for region, _ in coverage})
@@ -324,12 +342,15 @@ def render(comparison: ScenarioComparison | None) -> None:
         crushing = _crushing(months, region)
         cards = [*st.columns(2), *st.columns(2)]
         with cards[0]:
+            st.caption(f"{_label(shock_region)} soybean supply")
             _card(
                 "Production Shock",
                 "Unavailable" if production is None else _percent(production),
                 production,
                 "t",
             )
+            if production is not None:
+                st.caption(f"Difference: {_change(production.difference, 't')}")
         with cards[1]:
             _card(
                 "Crushing Impact",
