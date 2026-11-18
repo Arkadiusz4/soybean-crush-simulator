@@ -127,6 +127,7 @@ def render(result: SimulationResult | None) -> None:
             st.metric(
                 label, value, help=None if exact is None else f"Exact: {exact:,.2f} t"
             )
+    st.caption("Compact totals are rounded. Metric help shows exact quantities.")
 
     regional_rows = []
     for region, name in zip(regions, region_names, strict=True):

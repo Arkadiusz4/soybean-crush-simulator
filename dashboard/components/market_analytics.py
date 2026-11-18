@@ -3,6 +3,7 @@
 import math
 from datetime import date
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -124,6 +125,55 @@ def _label(value: Region | Commodity) -> str:
     return value.value.replace("_", " ").title()
 
 
+def _chart(
+    frame: pd.DataFrame, unit: str, *, height: int = 400, bars: bool = False
+) -> None:
+    """Render existing observations with consistent month ticks and full tooltips.
+
+    Args:
+        frame (pd.DataFrame): Series columns indexed by dates named Month.
+        unit (str): Vertical axis label including the quantity's units.
+        height (int): Plot height in pixels, excluding the legend and axes.
+        bars (bool): Use grouped bars instead of lines with explicit gaps.
+
+    Returns:
+        None: Writes a chart without modifying the source observations.
+    """
+    records = frame.reset_index().melt(
+        id_vars="Month", var_name="Series", value_name="Value"
+    )
+    years = {month.year for month in frame.index}
+    base = alt.Chart(records).encode(
+        x=alt.X(
+            "Month:T",
+            title="Month",
+            axis=alt.Axis(format="%b %Y" if len(years) > 1 else "%b"),
+        ),
+        y=alt.Y("Value:Q", title=unit),
+        color=alt.Color(
+            "Series:N",
+            legend=alt.Legend(
+                orient="bottom", direction="horizontal", labelLimit=180, columns=2
+            ),
+        ),
+        tooltip=[
+            alt.Tooltip("Month:T", format="%b %Y"),
+            "Series:N",
+            alt.Tooltip("Value:Q", format=",.2f"),
+        ],
+    )
+    chart = (
+        base.mark_bar().encode(xOffset="Series:N")
+        if bars
+        else base.mark_line(point=True, invalid="break-paths-show-domains")
+    )
+    # Fit only the width so legends cannot consume the requested plot height.
+    chart = chart.properties(
+        height=height, autosize=alt.AutoSizeParams(type="fit-x", contains="padding")
+    )
+    st.altair_chart(chart, width="stretch", height="content")
+
+
 def _selector(
     label: str, options: list[Region] | list[Commodity], key: str
 ) -> Region | Commodity:
@@ -142,7 +192,7 @@ def _line_section(
         st.info("No observations are available for this selection.")
         return
     frame = pd.DataFrame(series, columns=["Month", value_label]).set_index("Month")
-    st.line_chart(frame, y_label=value_label, x_label="Month")
+    st.line_chart(frame, y_label=value_label, x_label="Month", height=400)
     if any(value is None for _, value in series):
         st.caption("Missing observations are shown as gaps.")
 
@@ -177,9 +227,23 @@ def _indexed(
 
 
 def _multi_chart(
-    title: str, series: dict[str, list[tuple[date, float | None]]], unit: str
+    title: str,
+    series: dict[str, list[tuple[date, float | None]]],
+    unit: str,
+    *,
+    height: int = 400,
 ) -> None:
-    """Display selected commodity observations without filling missing values."""
+    """Display selected commodity observations without filling missing values.
+
+    Args:
+        title (str): Section heading.
+        series (dict): Named series of monthly observations, including gaps.
+        unit (str): Vertical axis label with units.
+        height (int): Plot height in pixels, excluding labels and legend.
+
+    Returns:
+        None: Renders recorded values or an informative empty state.
+    """
     st.subheader(title)
     if not any(value is not None for values in series.values() for _, value in values):
         st.info("No observations are available for this selection.")
@@ -191,7 +255,7 @@ def _multi_chart(
         }
     ).sort_index()
     frame.index.name = "Month"
-    st.line_chart(frame, x_label="Month", y_label=unit, height=300)
+    _chart(frame, unit, height=height)
     if frame.isna().any().any():
         st.caption("Missing observations are shown as gaps.")
 
@@ -231,7 +295,7 @@ def _crushing(result: SimulationResult, region: Region) -> None:
     frame = pd.DataFrame(series, columns=["Month", "Soybean Crushing (t)"]).set_index(
         "Month"
     )
-    st.bar_chart(frame, y_label="Soybean Crushing (t)", x_label="Month")
+    st.bar_chart(frame, y_label="Soybean Crushing (t)", x_label="Month", height=320)
     if any(value is None for _, value in series):
         st.caption("Some crushing records are unavailable.")
 
@@ -247,7 +311,7 @@ def _crushing_regions(result: SimulationResult, regions: list[Region]) -> None:
         {name: pd.Series(dict(values), dtype=float) for name, values in series.items()}
     ).sort_index()
     frame.index.name = "Month"
-    st.bar_chart(frame, x_label="Month", y_label="Soybean crushing (t)", stack=False)
+    _chart(frame, "Soybean crushing (t)", height=320, bars=True)
     if frame.isna().any().any():
         st.caption("Some crushing records are unavailable.")
 
@@ -318,11 +382,11 @@ def _regional_trade(
             "Unique involved trade (t)",
         ],
     ).set_index("Month")
-    st.bar_chart(
-        frame[["Regional imports (t)", "Regional exports (t)"]],
-        x_label="Month",
-        y_label="Trade (t)",
-        stack=False,
+    _chart(
+        frame.filter(items=["Regional imports (t)", "Regional exports (t)"]),
+        "Trade (t)",
+        height=320,
+        bars=True,
     )
     with st.expander("Monthly trade details"):
         st.dataframe(frame, use_container_width=True)
@@ -364,7 +428,7 @@ def _trade(
     frame = pd.DataFrame(
         series, columns=["Month", "Imports (t)", "Exports (t)"]
     ).set_index("Month")
-    st.bar_chart(frame, y_label="Trade (t)", x_label="Month", stack=False)
+    st.bar_chart(frame, y_label="Trade (t)", x_label="Month", height=320, stack=False)
     frame["Net imports (t)"] = frame["Imports (t)"] - frame["Exports (t)"]
     with st.expander("Monthly trade details"):
         st.dataframe(frame, use_container_width=True)
@@ -454,6 +518,10 @@ def render(result: SimulationResult | None) -> None:
         st.info("Select at least one commodity to view prices, inventories, and trade.")
     _crushing_regions(result, selected_regions)
     if selected:
+        st.caption(
+            "Inventory lines show tonnes. Narrow the filters if stock scales "
+            "differ substantially."
+        )
         _multi_chart(
             "Inventory Evolution",
             {
@@ -464,5 +532,6 @@ def render(result: SimulationResult | None) -> None:
                 for commodity in selected
             },
             "Ending inventory (t)",
+            height=350,
         )
         _regional_trade(result, selected_regions, selected)
