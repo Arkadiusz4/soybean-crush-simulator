@@ -171,9 +171,23 @@ def _month_format(months: Iterable[date]) -> str:
 
 
 def _chart(
-    values: list[tuple[date, MetricComparison]], unit: str, *, bars: bool
+    values: list[tuple[date, MetricComparison]],
+    unit: str,
+    *,
+    bars: bool,
+    height: int = 400,
 ) -> None:
-    """Render paired monthly values on a chronological, clearly labeled axis."""
+    """Render paired observations without fitting legends into the plot height.
+
+    Args:
+        values (list): Recorded monthly baseline and modified metrics.
+        unit (str): Vertical axis label with units.
+        bars (bool): Use grouped bars instead of lines.
+        height (int): Plot height in pixels, excluding the legend and axes.
+
+    Returns:
+        None: Displays the supplied observations without changing their values.
+    """
     frame = pd.DataFrame(
         [(month, item.baseline, item.drought) for month, item in values],
         columns=["Month", "Baseline", "Modified Scenario"],
@@ -185,7 +199,11 @@ def _chart(
             axis=alt.Axis(format=_month_format(m for m, _ in values)),
         ),
         y=alt.Y("Value:Q", title=unit),
-        color=alt.Color("Scenario:N", title="Scenario"),
+        color=alt.Color(
+            "Scenario:N",
+            title="Scenario",
+            legend=alt.Legend(orient="bottom", direction="horizontal", columns=2),
+        ),
         tooltip=["Month:T", "Scenario:N", alt.Tooltip("Value:Q", format=",.2f")],
     )
     chart = (
@@ -193,7 +211,10 @@ def _chart(
         if bars
         else base.mark_line(point=True)
     )
-    st.altair_chart(chart, use_container_width=True)
+    chart = chart.properties(
+        height=height, autosize=alt.AutoSizeParams(type="fit-x", contains="padding")
+    )
+    st.altair_chart(chart, width="stretch", height="content")
 
 
 def _label(value: Region | Commodity) -> str:
@@ -215,11 +236,25 @@ def _select(
 
 
 def _line_chart(
-    title: str, values: list[tuple[date, MetricComparison]], unit: str
+    title: str,
+    values: list[tuple[date, MetricComparison]],
+    unit: str,
+    *,
+    height: int = 400,
 ) -> None:
-    """Chart paired monthly observations with a shared time axis."""
+    """Chart paired monthly observations with a shared time axis.
+
+    Args:
+        title (str): Section heading.
+        values (list): Monthly baseline and modified observations.
+        unit (str): Vertical axis label with units.
+        height (int): Plot height in pixels, excluding labels and legend.
+
+    Returns:
+        None: Displays the comparison at the requested plot height.
+    """
     st.subheader(title)
-    _chart(values, unit, bars=False)
+    _chart(values, unit, height=height, bars=False)
 
 
 def _prices(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
@@ -241,13 +276,13 @@ def _crush_chart(values: list[tuple[date, MetricComparison]]) -> None:
     if all(value.baseline == value.drought == 0 for _, value in values):
         st.info("No soybean crushing was executed in either scenario for this region.")
         return
-    _chart(values, "Soybean crushing (t)", bars=True)
+    _chart(values, "Soybean crushing (t)", height=320, bars=True)
 
 
 def _inventories(markets: list[tuple[date, RegionalMarketComparison]]) -> None:
     """Plot paired month-end inventories, retaining valid zero stocks."""
     values = [(month, market.inventory_tonnes) for month, market in markets]
-    _line_chart("Inventory Comparison", values, "Ending inventory (t)")
+    _line_chart("Inventory Comparison", values, "Ending inventory (t)", height=350)
     st.caption(f"Final inventory: {_pair_caption(values[-1][1], 't')}")
 
 

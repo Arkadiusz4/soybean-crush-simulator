@@ -27,6 +27,10 @@ def main() -> None:
             "year",
             "shock_region",
             "shock_percent",
+            "shock_kind",
+            "shock_commodity",
+            "capacity_change_percent",
+            "cost_change_percent",
         )
     )
     if outdated_result:
@@ -304,6 +308,14 @@ def main() -> None:
                     "and simulated prices can diverge from reference prices; "
                     "this is not a forecast."
                 )
+                with st.expander("Historical assumptions"):
+                    st.caption(
+                        "USDA annual quantities are allocated into modeled months. "
+                        "Regional prices are simulated, not historical price replay. "
+                        "Trader decisions do not reproduce global historical trade. "
+                        "Valid physical accounting does not establish "
+                        "economic calibration."
+                    )
             else:
                 st.caption("Synthetic results are not forecasts.")
     baseline = None if current is None else current.baseline
