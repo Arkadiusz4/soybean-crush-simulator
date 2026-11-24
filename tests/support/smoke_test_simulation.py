@@ -1,6 +1,6 @@
 """Run a simple smoke test of the simulation.
 
-Run with ``uv run python scripts/smoke_test_simulation.py`` from the repository.
+Used by the optional local-data integration test.
 Capacities and costs are illustrative settings, not estimates from historical data.
 USDA beginning stocks are used without adjusting them to the calendar price month.
 """
@@ -34,7 +34,7 @@ from soybean_sim.market import MarketState, SettlementOutcome
 from soybean_sim.models import Commodity, MarketSnapshot, Region, SimulationInput
 from soybean_sim.simulation import MonthlyResult, SimulationResult, run_simulation
 
-_REPOSITORY: Final = Path(__file__).resolve().parents[1]
+_REPOSITORY: Final = Path(__file__).resolve().parents[2]
 _USDA_PATH: Final = _REPOSITORY / "data/raw/psd_oilseeds.csv"
 _WORLD_BANK_PATH: Final = _REPOSITORY / "data/raw/CMO-Historical-Data-Monthly.xlsx"
 _MARKETING_YEAR: Final = "2024"

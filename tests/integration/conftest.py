@@ -15,7 +15,7 @@ def market_smoke() -> ModuleType:
     Returns:
         ModuleType: Script exposing shared synthetic setup and independent assertions.
     """
-    path = Path(__file__).resolve().parents[2] / "scripts/smoke_test_market.py"
+    path = Path(__file__).resolve().parents[2] / "tests/support/smoke_test_market.py"
     specification = importlib.util.spec_from_file_location("market_smoke", path)
     assert specification is not None and specification.loader is not None
     module = importlib.util.module_from_spec(specification)
@@ -42,7 +42,7 @@ def scenario_demo(market_smoke: ModuleType) -> ModuleType:
     Returns:
         ModuleType: Standalone synthetic comparison script and Rich presentation.
     """
-    directory = Path(__file__).resolve().parents[2] / "scripts"
+    directory = Path(__file__).resolve().parents[2] / "tests/support"
     modules = {
         "market_smoke_report": market_smoke.report,
         "smoke_test_market": market_smoke,
@@ -74,7 +74,7 @@ def historical_script(
     Returns:
         ModuleType: Historical script callable without altering installation paths.
     """
-    directory = Path(__file__).resolve().parents[2] / "scripts"
+    directory = Path(__file__).resolve().parents[2] / "tests/support"
     dependencies = {
         "market_smoke_report": market_smoke.report,
         "smoke_test_market": market_smoke,

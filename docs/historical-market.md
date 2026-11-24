@@ -42,7 +42,7 @@ are simulated values, not a replay of later historical prices.
 
 ## Preparation, screening, and execution
 
-The [historical smoke script](../scripts/smoke_test_historical_market.py) shows
+The [historical integration helper](../tests/support/smoke_test_historical_market.py) shows
 complete preparation, calibration, preflight, and execution using the public
 `load_historical_market`, `calibrate_historical_crushers`,
 `preflight_historical_market`, and `run_historical_market` APIs.
@@ -113,16 +113,12 @@ history is returned. A failure before decisions may precede that month's observe
 ## Demonstration and current limitations
 
 ```bash
-uv run python scripts/smoke_test_historical_market.py
-uv run python scripts/smoke_test_historical_market.py --verbose
-uv run python scripts/smoke_test_historical_market.py --compare
+just integration
 ```
 
-The script prints source dates, assumptions, selected prices, explicit agent
-settings, and separate preparation/preflight/execution statuses. Verbose mode
-adds source hashes, annual quantities, weights, and first-month allocations.
-Successful runs include independent inventory accounting, crushing/trade totals,
-observed regional price changes, and final stocks. Blocking failures exit nonzero.
+Integration tests exercise preparation, calibration, execution, accounting, and
+comparison using offline fixtures. The optional local-data tests run when both
+historical datasets are available and otherwise report a skip.
 
 ### Processing scale and capacity calibration
 

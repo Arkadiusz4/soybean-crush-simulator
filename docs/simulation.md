@@ -200,7 +200,7 @@ meal/oil inventories for crushing. Missing stocks are not manufactured as zero.
 
 ## Runnable synthetic example
 
-Run the self-contained, dataset-free [physical market smoke test](../scripts/smoke_test_market.py)
+Run the self-contained, dataset-free [physical market integration helper](../tests/support/smoke_test_market.py)
 for a complete example using agents, flows, settlement, and regional prices.
 
 ## Current assumptions and limitations
@@ -226,23 +226,18 @@ Scenario labels and the stored seed do not activate shocks or stochastic behavio
 ## Smoke validation
 
 ```bash
-uv run python scripts/smoke_test_simulation.py
-uv run python scripts/smoke_test_market.py
-uv run python scripts/smoke_test_market.py --verbose
+just integration
 ```
 
-The first script uses local historical datasets in legacy mode, with deferred
-trades. The second needs no datasets: it runs January–March 2025 with synthetic
+Optional local-data tests use historical datasets in legacy mode, with deferred
+trades. Offline tests run January–March 2025 with synthetic
 Brazil/EU stocks, all three concrete agent roles, generated monthly flows, matched
 soybean trades, and dynamic regional prices. It checks physical accounting,
 explicit expected pressure/price values, agent observations, immutable inputs,
 and repeatability after shuffling registration, flow, and initial-price order.
-Both scripts return a nonzero exit status when an invariant fails.
+Pytest reports failures when an invariant does not hold.
 
-The Milestone 3 script uses Rich tables for activity totals, first-to-last observed
-regional price changes, final inventories, and validation results. Add `--verbose`
-to include monthly supply, demand, and net-pressure columns. Price colors indicate
-direction only. Failures name the validation stage and end with an overall FAIL.
+The integration suite also checks the terminal reports and their validation stages.
 
 For each regional commodity, ending stock equals opening stock plus physical
 production, crushing output, and executed imports, less crushing input, executed

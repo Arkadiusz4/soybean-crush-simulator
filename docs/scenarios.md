@@ -116,8 +116,7 @@ post-December price forecast.
 ## Synthetic demonstration
 
 ```bash
-uv run python scripts/compare_scenarios.py
-uv run python scripts/compare_scenarios.py --verbose
+just integration
 ```
 
 The dataset-free demo covers January–December 2025 and all four regions. It starts

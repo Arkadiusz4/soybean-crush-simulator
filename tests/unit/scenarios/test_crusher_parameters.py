@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 from pydantic import ValidationError
 
-from scripts.compare_scenarios import create_agents, create_demo
+from dashboard.demo import create_agents, create_demo
 from soybean_sim.agents import CrusherConfig
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (

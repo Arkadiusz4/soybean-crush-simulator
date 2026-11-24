@@ -26,6 +26,22 @@ typecheck:
 test:
     uv run --locked pytest
 
+# Run integration tests without requiring full-suite coverage.
+integration:
+    uv run --locked pytest tests/integration --no-cov
+
+# Display the synthetic physical market report.
+report-market:
+    uv run --locked python tests/support/smoke_test_market.py
+
+# Display the synthetic baseline and drought comparison.
+report-scenarios:
+    uv run --locked python tests/support/compare_scenarios.py
+
+# Display the historical baseline and drought comparison using local datasets.
+report-historical:
+    uv run --locked python tests/support/smoke_test_historical_market.py --compare
+
 # Run tests with the same explicit coverage options as CI.
 coverage:
     uv run --locked pytest --cov=soybean_sim --cov-report=term-missing

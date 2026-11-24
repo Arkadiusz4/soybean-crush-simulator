@@ -26,7 +26,7 @@ from soybean_sim.scenarios import (
 )
 from soybean_sim.simulation import SimulationResult
 
-_REPOSITORY = Path(__file__).resolve().parents[1]
+_REPOSITORY = Path(__file__).resolve().parents[2]
 
 
 def print_demand(console: Console, result: SimulationResult, *, label: str) -> None:
