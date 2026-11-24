@@ -1,4 +1,5 @@
 import importlib
+from itertools import pairwise
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -109,3 +110,32 @@ def test_load_failure_can_be_retried(
     assert any("modified scenario results loaded" in item.value for item in app.success)
     assert any("Simulation failed" in item.value for item in app.error)
     assert logged.call_count == 2
+
+
+def test_dashboard_pricing_settings_reach_real_engine() -> None:
+    """Verify zero sensitivity freezes prices and a configured cap limits changes."""
+    frozen = data.run_dashboard_simulation(
+        data.RunConfig("Synthetic", "Baseline", price_sensitivity=0.0)
+    ).baseline
+    limited = data.run_dashboard_simulation(
+        data.RunConfig(
+            "Synthetic", "Baseline", price_sensitivity=1.0, maximum_monthly_change=0.01
+        )
+    ).baseline
+
+    def prices(month):
+        return {
+            (price.region, price.commodity): price.price_usd_per_tonne
+            for price in month.regional_prices
+        }
+
+    frozen_prices = [prices(month) for month in frozen.monthly_results]
+    assert all(month == frozen_prices[0] for month in frozen_prices[1:])
+    limited_prices = [prices(month) for month in limited.monthly_results]
+    changes = [
+        abs(current[key] / previous[key] - 1)
+        for previous, current in pairwise(limited_prices)
+        for key in previous
+    ]
+    assert any(change > 0 for change in changes)
+    assert all(change <= 0.01 + 1e-12 for change in changes)
