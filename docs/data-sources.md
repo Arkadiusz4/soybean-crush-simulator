@@ -1,9 +1,8 @@
 # Data sources
 
-Historical data will initialize regional quantities and reference prices. A local
-USDA PSD CSV loader and World Bank monthly XLSX price loader are implemented.
-Automatic downloads, API clients, and monthly allocation are not. Full datasets
-are not bundled.
+Historical USDA PSD balances and World Bank monthly prices initialize the model.
+Local CSV and XLSX loaders and modeled monthly allocation are implemented. Automatic
+downloads and API clients are not; full datasets are not bundled.
 
 ## USDA Production, Supply and Distribution (PSD)
 
@@ -16,9 +15,9 @@ consumption, beginning and ending stocks, and soybean meal and oil production
 and consumption. Coverage and definitions must be checked for each selected
 commodity, region, and reporting period.
 
-These quantities will inform initial inventories, production and consumption
-levels, and regional supply balances. Crushing observations can inform activity
-levels, but do not by themselves establish process yields or agent behavior.
+These quantities inform initial inventories, production, consumption, and regional
+supply balances. Historical Crusher calibration can derive product yields from
+production and crush observations; these do not establish agent behavior.
 The loader uses the published CSV export. API access is outside the current scope.
 
 ### Implemented local CSV loader
@@ -110,9 +109,8 @@ equations, or establish a policy for historical EU membership or revisions.
 ## World Bank Commodity Markets (Pink Sheet)
 
 The [Commodity Markets page](https://www.worldbank.org/en/research/commodity-markets)
-provides monthly and annual historical price downloads. The project plans to use
-monthly soybean, soybean meal, and soybean oil prices as reference prices for
-initialization and comparison with model behavior.
+provides monthly and annual historical price downloads. Monthly soybean, soybean
+meal, and soybean oil prices are global reference prices for initialization.
 
 ### Implemented local monthly price loader
 
@@ -184,8 +182,7 @@ the full raw workbook or network access. The input builder below combines loaded
 prices with USDA balances.
 
 Reference series must not be treated as observed transaction prices for all four
-regions. Any regional price differences or transport adjustments will require
-explicit modeling assumptions. Historical prices are not a direct forecast of
+regions. Regional price differences use explicit modeled assumptions. Historical prices are not a direct forecast of
 future simulation prices.
 
 ## Reporting periods and units
@@ -195,10 +192,9 @@ boundaries can differ across regions and commodities. World Bank monthly prices
 follow calendar months. Quantities, stocks, and prices therefore cannot be joined
 as if they shared a single reporting period or unit.
 
-The initial model will allocate annual flows into monthly values using a simple,
-documented rule. The exact rule and seasonality are open decisions; equal division
-across twelve months is a possible baseline, not a finalized rule. Beginning and
-ending stocks are boundary measurements and must not be divided like annual flows.
+The flow generator allocates annual quantities using configurable monthly weights,
+uniform by default. These are assumptions, not observed monthly USDA flows.
+Beginning and ending stocks are boundary measurements and are not divided.
 
 Before combining sources, normalize commodity and region identifiers, physical
 units, currencies, price quotation bases, and reporting periods. Preserve original
@@ -268,9 +264,9 @@ simulation execution remain outside this builder.
    must not silently become zero.
 4. Check plausible stock and flow balances using documented source definitions,
    allowing for reporting differences and rounding rather than forcing equality.
-5. Assemble the baseline input with the builder above. Monthly flow allocation
-   and stock alignment require future modeling decisions before engine execution.
-   Tests use small fixtures rather than live services.
+5. Assemble the baseline input with the builder above. The historical runner
+   allocates annual quantities to modeled months; stock alignment remains an
+   assumption. Tests use small fixtures rather than live services.
 
 Production, use, trade, stocks, crushing activity, and reference prices are expected
 historical inputs. Monthly allocation, agent rules, price adjustment, crush yields,

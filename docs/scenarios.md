@@ -1,6 +1,11 @@
 # Scenario input preparation
 
-`soybean_sim.scenarios` prepares drought flows and executes controlled paired runs.
+`soybean_sim.scenarios` supports regional soybean production shocks, meal/oil
+consumption shocks, Crusher parameter changes, and controlled paired runs. Use
+`ProductionShockConfig` and `apply_production_shock()` for regional soybean
+supply; `ConsumptionShockConfig` and `apply_consumption_shock()` for product
+consumption; and `CrusherParameterShockConfig` for capacity and cost changes.
+The generic `run_production_shock_comparison()` accepts these experiment types.
 `SimulationConfig.scenario_name` remains a label; there is no scenario registry or
 YAML dispatcher.
 
@@ -68,8 +73,9 @@ monthly = comparison.monthly_metrics()
 
 The runner materializes generator inputs once, applies the existing drought
 transformation, and runs the unchanged engine twice. Both runs share initial
-stocks, global/regional price baselines, processing settings, duration, and price
-dynamics. The factory is called separately for each run. Reusing agent objects,
+stocks, global/regional price baselines, duration, and price dynamics. Processing
+settings differ only for a configured Crusher experiment. The factory is called
+separately for each run. Reusing agent objects,
 changing identities/implementation classes, or changing concrete Producer,
 Crusher, or Trader configurations raises `ScenarioError`. Custom `Agent`
 implementations remain supported; their factory must also reproduce private
@@ -77,8 +83,8 @@ strategy settings and create independent mutable state.
 
 Frozen `ScenarioComparison` holds `baseline`, `drought`, and `drought_config` once.
 It checks matching months and initial conditions, physical-cycle history, complete
-inventory/price/pressure coverage for all three commodities in represented regions,
-finite nested values, and the configured supply-only flow difference. Existing
+inventory/price/pressure coverage, finite nested values, and the configured
+scenario-specific input or Crusher configuration difference. Existing
 engine/settlement domain errors propagate. `compare_simulation_results()` validates
 already recorded histories, but cannot infer unrecorded private strategy settings.
 Invalid comparison records raise `ScenarioError`; direct model construction uses
@@ -152,5 +158,5 @@ There is no guarantee of transmission from Argentina to every other region.
 Different price paths require an actual physical or behavioral channel in the
 simulated market. Global historical prices remain fixed reference values;
 regional prices are simulated, uncalibrated values. The comparison is a controlled
-scenario experiment, not a market-price forecast. Empirical calibration, weather
-estimation, new strategies, and dashboard integration remain outside this feature.
+scenario experiment, not a market-price forecast. Empirical calibration, weather estimation, and new strategies remain outside this feature.
+The dashboard supports single runs and paired comparisons for these experiments.

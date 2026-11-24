@@ -31,9 +31,9 @@ values remain errors rather than becoming zero. Known zero values are retained.
 
 Soybean production supplies physical inventory. Meal/oil production remains
 reference-only: physical products come from executed crushing. Soybean domestic
-consumption is excluded to avoid counting crushing inputs twice. The smoke script
-also enables explicit boundary trade; annual imports/exports are allocated
-uniformly as described below, not silently added as opening inventory.
+consumption is excluded to avoid counting crushing inputs twice. The historical
+runner uses agent trade matching; USDA imports and exports are reference data,
+not automatic inventory movements.
 
 January's global reference values remain constant throughout execution; the
 engine advances their observation labels for agent snapshots. The original
@@ -42,48 +42,10 @@ are simulated values, not a replay of later historical prices.
 
 ## Preparation, screening, and execution
 
-```python
-from soybean_sim.agents import TraderConfig
-from soybean_sim.market import PriceDynamicsConfig
-from soybean_sim.models import Commodity, Region
-from soybean_sim.scenarios import (
-    calibrate_historical_crushers,
-    load_historical_market,
-    preflight_historical_market,
-    run_historical_market,
-)
-
-prepared = load_historical_market(
-    "data/raw/psd_oilseeds.csv",
-    "data/raw/CMO-Historical-Data-Monthly.xlsx",
-    include_historical_trade=True,
-)
-references = {
-    item.commodity: item.price_usd_per_tonne for item in prepared.reference_prices
-}
-crushers = calibrate_historical_crushers(
-    prepared, processing_cost_usd_per_tonne=35, calibrate_yields=True
-)
-traders = {
-    region: TraderConfig(
-        reference_soybean_price_usd_per_tonne=references[Commodity.SOYBEANS],
-        reference_soybean_meal_price_usd_per_tonne=references[Commodity.SOYBEAN_MEAL],
-        reference_soybean_oil_price_usd_per_tonne=references[Commodity.SOYBEAN_OIL],
-        maximum_monthly_purchase_tonnes=5_000,
-    )
-    for region in Region
-}
-settings = dict(
-    crusher_configs=crushers,
-    trader_configs=traders,
-    price_dynamics_config=PriceDynamicsConfig(),
-)
-screen = preflight_historical_market(prepared, **settings)
-if screen.can_run:
-    result = run_historical_market(prepared, **settings)
-else:
-    print("Blocked:", *screen.blocking_errors, sep="\n")
-```
+The [historical smoke script](../scripts/smoke_test_historical_market.py) shows
+complete preparation, calibration, preflight, and execution using the public
+`load_historical_market`, `calibrate_historical_crushers`,
+`preflight_historical_market`, and `run_historical_market` APIs.
 
 `prepare_historical_market()` accepts existing in-memory loader records instead
 of file paths. Both preparation APIs retain selected annual balances, original
@@ -112,19 +74,20 @@ external mass ledger; regional exports credit it. The signed external change is
 External availability follows the exogenous schedule; finite outside stocks are
 not simulated. A negative external ledger change is not an invented negative stock.
 
-Historical boundary mode replaces agent trade matching: offers and purchase
+The engine's boundary mode replaces agent trade matching: offers and purchase
 intentions remain recorded, but are not settled again on top of USDA gross totals.
 Ordinary runs without a boundary schedule retain existing interregional matching.
 
-The monthly order is production, boundary imports, agent decisions, crushing,
-domestic consumption, and boundary exports. Imports can support January crushing
-and consumption. Full exports require remaining physical stock; neither exports
-nor consumption are clipped. `MonthlyResult.external_trade_flows` records only
-fully settled transfers. Imports contribute supply and exports demand to the
-existing price-pressure calculation; the price formula is unchanged.
+When explicitly passed to the simulation engine, boundary flows run in the order
+production, imports, decisions, crushing, consumption, and exports. Exports require
+sufficient stocks. Consumption is strict by default; demand-aware mode can fulfill
+less than requested. The historical runner does not pass this boundary schedule.
+`MonthlyResult.external_trade_flows` records only fully settled transfers.
+Imports contribute supply and exports demand to price pressure.
 
-Paired runs use the identical boundary schedule. Drought changes only new Argentine
-soybean supply, leaving historical trade allocations and processing settings fixed.
+Historical paired runs use agent matching, with identical initial conditions and
+settings except for the selected experiment. The shock changes only its intended
+flows or Crusher parameters.
 
 ## Feasibility screening
 
@@ -132,16 +95,18 @@ Preflight checks coverage, finite/nonnegative data, beginning stocks, unique
 records, dates, allocation identity, and complete explicit agent configurations.
 It rejects altered opening stocks or scaled flows rather than repairing them.
 
-The screen bounds cumulative crushing by both processing capacity and available
-soybeans: opening stocks, modeled soybean production, and scheduled imports,
+The optional strict screen bounds cumulative crushing by both processing capacity
+and available soybeans: opening stocks, modeled production, and scheduled imports,
 reserving scheduled soybean exports. Product consumption **plus exports** must
 fit opening product stocks, scheduled imports, and the output of this crush bound.
 The original reference-only mode still uses an optimistic prior-purchase bound.
 Diagnostics identify the first certain regional deficit, month, cumulative
 quantities, and shortfall. Trade coverage and exact annual/12 quantities are
 revalidated, so adding arbitrary transfers cannot bypass the screen.
-Passing this optimistic screen does **not** guarantee actual settlement: margins
-and soybean availability may reduce processing. Execution failures retain the
+The historical runner uses calibration preflight, which validates inputs without
+requiring all demand to be fulfilled. Passing either screen does **not** guarantee
+actual execution: margins and soybean availability may reduce processing.
+Execution failures retain the
 last observed decision scenario/month and the original domain error; no partial
 history is returned. A failure before decisions may precede that month's observer.
 
@@ -159,7 +124,7 @@ adds source hashes, annual quantities, weights, and first-month allocations.
 Successful runs include independent inventory accounting, crushing/trade totals,
 observed regional price changes, and final stocks. Blocking failures exit nonzero.
 
-### Processing scale and remaining infeasibility
+### Processing scale and capacity calibration
 
 The old 10,000 t/month capacities came from a small demonstration and were
 incompatible with historical consumption. `calibrate_historical_crushers()` now
@@ -225,22 +190,21 @@ the three traded inventories. It receives no price or revenue. This makes the
 modeled mass remainder explicit without inventing another traded commodity.
 
 At full observed annual throughput the derived oil ratio reproduces 11,842,000 t
-and leaves exactly the reported 207,000 t ending stocks. The inspected historical
-preflight now **passes**, including external trade. Physical execution still
-**fails in January**: unchanged Brazilian margin rules choose 60% utilization,
-producing 592,100 t oil. Opening stocks plus January imports and this output total
-776,183.33 t, below domestic consumption of 867,500 t by 91,316.67 t, before exports.
-This is a real utilization/timing constraint, not the former annual yield error.
-Neither processing nor consumption is forced to make settlement succeed. The
-baseline returns no partial history, and paired execution stops at its failed
-baseline. Source revisions may change these diagnostics.
+and leaves the reported 207,000 t ending stocks. In January, margin-driven
+utilization can still make available oil smaller than requested consumption.
+Historical execution uses demand-aware settlement: it records requested,
+fulfilled, and unmet consumption rather than inventing stocks or forcing crushing.
+Requested demand remains a price-pressure signal. With the local 2024 source
+selection, the baseline and drought comparison completed all 12 months; results
+and unmet quantities depend on the dataset release and configuration.
 
 ### Physical accounting
 
 Every executed month must satisfy:
 
 ```text
-ending = opening + physical production + executed imports - consumption - executed exports
+ending = opening + physical production + crushing output + executed imports
+         - crushing input - fulfilled consumption - executed exports
 ```
 
 Soybean production uses the modeled annual allocation; executed crushing consumes
@@ -254,16 +218,11 @@ For crushing, soybean input equals meal output plus oil output plus recorded
 processing residual. Whole-system mass accounting includes that residual as an
 explicit outlet; it is not silently lost or credited to product inventory.
 
-Neither artificial stocks, consumption clipping, extra product-production credits,
-nor forced processing are used to make execution pass. Offline synthetic tests
-still verify complete 12-month runs, physical accounting, and independent drought
-comparison with the throughput calibration helper.
-
-`compare_historical_market(prepared, **settings, drought_config=...)` delegates
-to the existing paired-run API with identical initial states and fresh agents.
-The drought modifies only newly allocated Argentine soybean supply. Both runs
-must complete; otherwise the comparison is blocked. The default historical setup
-passes preflight but is blocked by baseline physical execution.
+Historical calibration records unmet demand explicitly; strict consumption remains
+the engine default. No artificial stocks or forced processing are introduced.
+`compare_historical_market(prepared, **settings, drought_config=...)` requires
+both histories to complete and supports production, consumption, and Crusher
+configuration experiments. Failures return diagnostics rather than partial history.
 
 Future decisions include installed-capacity/utilization calibration, inventory
 alignment, interpreting the residual, non-crush soybean consumption, bilateral trade

@@ -69,9 +69,11 @@ Each physical month follows this order:
 
 Soybean consumption flows are rejected: crushing already accounts for soybean use.
 Incoming trades cannot fund sales within the same matching/settlement batch.
-Consumption shortages propagate `FlowSettlementError`; consumption is never reduced
-or funded through automatic imports. Availability is checked at the execution stage,
-so current-month crushing outputs and imports can satisfy product consumption.
+Strict settlement is the default: shortages raise `FlowSettlementError`. With
+`demand_aware_consumption=True`, fulfillment is limited to available inventory and
+`consumption_results` records requested, fulfilled, and unmet tonnes. Requested
+demand remains a price-pressure signal. The historical runner uses this mode.
+Availability is checked after crushing and trade; no automatic imports are invented.
 
 Crushing output is available to the matcher in the same month when a corresponding
 sale intention exists. Existing agents still decide before crushing; this order
@@ -198,78 +200,8 @@ meal/oil inventories for crushing. Missing stocks are not manufactured as zero.
 
 ## Runnable synthetic example
 
-This self-contained example uses illustrative inputs, not historical observations:
-
-```python
-from datetime import date
-
-from soybean_sim.agents import AgentIdentity, AgentType, Crusher, CrusherConfig
-from soybean_sim.market import MarketState
-from soybean_sim.models import (
-    Commodity,
-    CommodityPrice,
-    Inventory,
-    MarketSnapshot,
-    Region,
-)
-from soybean_sim.simulation import run_simulation
-
-month = date(2023, 11, 1)
-prices = {
-    Commodity.SOYBEANS: 250,
-    Commodity.SOYBEAN_MEAL: 300,
-    Commodity.SOYBEAN_OIL: 800,
-}
-stocks = {
-    Commodity.SOYBEANS: 10000,
-    Commodity.SOYBEAN_MEAL: 0,
-    Commodity.SOYBEAN_OIL: 0,
-}
-state = MarketState.from_snapshot(
-    MarketSnapshot(
-        month=month,
-        prices=tuple(
-            CommodityPrice(
-                commodity=commodity,
-                month=month,
-                price_usd_per_tonne=price,
-                data_source="synthetic monthly example",
-            )
-            for commodity, price in prices.items()
-        ),
-        inventories=tuple(
-            Inventory(
-                region=Region.BRAZIL,
-                commodity=commodity,
-                quantity_tonnes=quantity,
-            )
-            for commodity, quantity in stocks.items()
-        ),
-    )
-)
-crusher = Crusher(
-    identity=AgentIdentity(
-        agent_id="crusher-br",
-        agent_type=AgentType.CRUSHER,
-        region=Region.BRAZIL,
-    ),
-    config=CrusherConfig(
-        monthly_capacity_tonnes=4000, processing_cost_usd_per_tonne=10
-    ),
-)
-result = run_simulation(
-    state,
-    [crusher],
-    crusher_configs={crusher.identity.agent_id: crusher.config},
-    months=4,
-)
-executed = [
-    sum(item.executed_tonnes for item in monthly.settlement_results)
-    for monthly in result.monthly_results
-]
-assert executed == [4000, 4000, 2000, 0]
-assert result.final_state.snapshot.month == date(2024, 2, 1)
-```
+Run the self-contained, dataset-free [physical market smoke test](../scripts/smoke_test_market.py)
+for a complete example using agents, flows, settlement, and regional prices.
 
 ## Current assumptions and limitations
 
@@ -283,8 +215,8 @@ Legacy runs do not replenish stocks through production or imports, and their
 purchase/sale intentions remain wholly unexecuted. Physical runs apply caller-supplied
 flows and matched transfers using shared regional stock, without agent ownership
 or reservation. Neither mode models harvesting or derives new flow data inside the
-engine. Repeated-batch replay protection, scenarios, and empirical calibration
-remain outside this API. Opening stock levels and unmatched intentions are not
+engine. Repeated-batch replay protection and empirical calibration remain outside this API.
+The separate scenarios package prepares and compares configured experiments. Opening stock levels and unmatched intentions are not
 additional pressure signals; only the existing physical-activity accounting is used.
 
 The engine uses no randomness or seed. `SimulationConfig` is not automatically
