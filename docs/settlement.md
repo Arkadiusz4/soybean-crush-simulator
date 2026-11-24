@@ -138,11 +138,11 @@ simplification, not ownership, a reservation, or a real purchase from producers.
 Sequential execution prevents crushers consuming the same soybean tonnes within
 one batch. The [monthly engine](simulation.md) carries returned stocks forward
 and advances the calendar, while direct settlement callers remain responsible
-for carrying their returned state. Batch replay prevention, trade matching, and
-allocation across actual transactions remain future work. Global reference prices
-are unchanged; no
-regional transaction prices, counterparties, budgets, routes, or shipments exist.
+for carrying their returned state. The physical monthly cycle also matches
+interregional trade; direct crushing settlement does not. Batch replay prevention,
+budgets, transport routes, and agent-owned stocks are not modeled. Global reference
+prices are unchanged and simulated regional prices are not transaction prices.
 
 When initializing from historical inputs, the existing
 [beginning-stocks timing assumption](assumptions.md#initial-inventory-reference)
-still applies. No annual-to-monthly allocation or calendar reconstruction occurs.
+still applies. Direct settlement does not allocate annual flows or reconstruct stocks.
