@@ -6,7 +6,7 @@ from functools import lru_cache
 from inspect import signature
 from pathlib import Path
 
-from scripts.compare_scenarios import create_agents, create_demo, run_demo
+from dashboard.demo import create_agents, create_demo, run_demo
 from soybean_sim.agents import CrusherConfig, TraderConfig
 from soybean_sim.data.usda import load_usda_psd_csv
 from soybean_sim.data.world_bank import load_world_bank_prices

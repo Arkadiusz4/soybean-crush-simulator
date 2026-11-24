@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest
 
 from dashboard import data
 from dashboard.components import scenario_comparison as view
-from scripts.compare_scenarios import create_demo, run_demo
+from dashboard.demo import create_demo, run_demo
 from soybean_sim.models import Commodity, Region
 from soybean_sim.scenarios import (
     ArgentinaDroughtConfig,

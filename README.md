@@ -50,7 +50,6 @@ sensitivity, monthly price limits, and shock dates.
 
 - `src/soybean_sim/`: installable models, data loaders, agents, market, engine, and scenarios.
 - `dashboard/`: Streamlit interface and result adapters.
-- `scripts/`: demonstrations and smoke checks.
 - `tests/`: unit and integration tests with offline fixtures.
 - `data/`: instructions and ignored local datasets.
 - `docs/`: technical references and modeling assumptions.
@@ -60,6 +59,7 @@ sensitivity, monthly price limits, and shock dates.
 
 ```bash
 just check       # Ruff, formatting, Pyright, and pytest
+just integration # Run integration tests (local datasets are optional)
 just             # List all available recipes
 uv run soybean-sim --help
 uv run soybean-sim version
@@ -68,6 +68,24 @@ uv run soybean-sim validate-config configs/baseline.yaml
 
 The CLI validates configuration and displays version information; it does not run
 simulations. See [contributing](CONTRIBUTING.md) and the [style guide](docs/style-guide.md).
+
+### Integration tests and reports
+
+`tests/integration/` contains pytest tests. Files in `tests/support/` provide
+the setups, checks, and report formatting those tests call; pytest does not
+collect the support files as tests. Run `just integration` to execute the suite.
+Checks requiring the two local datasets are skipped when they are unavailable.
+
+To show the terminal reports separately:
+
+```bash
+just report-market      # Synthetic market activity
+just report-scenarios   # Synthetic baseline versus drought
+just report-historical  # Historical comparison; requires local datasets
+```
+
+These recipes run the report helpers directly. Some report tests capture output
+for assertions, so running pytest with `-s` does not necessarily display it.
 
 ## Data and limitations
 
